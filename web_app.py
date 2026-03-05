@@ -54,6 +54,9 @@ def load_history():
         st.session_state.history = {}
 
 def save_history(question_text, is_correct):
+    if st.session_state.history is None:
+        st.session_state.history = {}
+        
     if question_text not in st.session_state.history:
         st.session_state.history[question_text] = {"correct": 0, "incorrect": 0}
         
@@ -82,7 +85,8 @@ def remove_from_incorrect_note(question_text):
     if os.path.exists(note_filename):
         df_old = pd.read_excel(note_filename)
         df_new = df_old[df_old['문제'] != question_text]
-        if df_new.empty: os.remove(note_filename) 
+        if df_new.empty: 
+            if os.path.exists(note_filename): os.remove(note_filename) 
         else: df_new.to_excel(note_filename, index=False)
 
 def is_bookmarked(question_text):
@@ -140,20 +144,27 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark):
     st.session_state.start_time = time.time()
     st.session_state.page = 'quiz'
 
-# 세션 상태(Session State) 초기화
+# 세션 상태(Session State) 완벽 초기화 (에러 방지)
 keys_to_init = [
     'page', 'nickname', 'df', 'index', 'score', 'total_possible_score', 
-    'correct_cnt', 'incorrect_cnt', 'show_answer', 'history', 'start_time',
+    'correct_cnt', 'incorrect_cnt', 'show_answer', 'start_time',
     'is_review_mode', 'is_bookmark_mode', 'is_mock_exam', 'has_visited'
 ]
 for key in keys_to_init:
     if key not in st.session_state:
         st.session_state[key] = None
 
+# history는 무조건 빈 딕셔너리로 확실하게 세팅!
+if 'history' not in st.session_state or st.session_state.history is None:
+    st.session_state.history = {}
+
 if st.session_state.page is None:
     st.session_state.page = 'login'
 
-# 방문자 수 1회 증가 로직 (새로고침 시 중복 방지)
+if st.session_state.has_visited is None:
+    st.session_state.has_visited = False
+
+# 방문자 수 1회 증가 로직
 if not st.session_state.has_visited:
     increment_visits()
     st.session_state.has_visited = True
@@ -177,14 +188,15 @@ if st.session_state.page == 'login':
             if login_id in users and users[login_id] == login_pw:
                 st.session_state.nickname = login_id
                 
-                # ⭐ 관리자 권한을 '펭귄주인장'으로 변경했습니다!
+                # ⭐ 관리자도 접속할 때 역사를 반드시 불러오도록 수정!
+                load_history()
+                
                 if login_id == "펭귄주인장":
                     st.toast("👑 최고 관리자 권한으로 접속했습니다!")
                     time.sleep(1)
                     st.session_state.page = 'admin_dashboard'
                     st.rerun()
                 else:
-                    load_history()
                     st.success(f"환영합니다, {login_id}님!")
                     time.sleep(0.5)
                     st.session_state.page = 'selection'
@@ -304,6 +316,7 @@ elif st.session_state.page == 'selection':
     if st.button("로그아웃 🔙", use_container_width=True):
         st.session_state.page = 'login'
         st.session_state.nickname = ''
+        st.session_state.history = {} # 로그아웃 시 기록 초기화
         st.rerun()
 
 # ==========================================
@@ -345,8 +358,11 @@ elif st.session_state.page == 'quiz':
             st.session_state.page = 'selection'
             st.rerun()
 
-    # 학습 이력
+    # ⭐ 안전하게 history 가져오기 (에러 방지 핵심)
+    if st.session_state.history is None:
+        st.session_state.history = {}
     q_history = st.session_state.history.get(q_text, {"correct": 0, "incorrect": 0})
+    
     total_attempts = q_history["correct"] + q_history["incorrect"]
     if total_attempts > 0:
         st.caption(f"📊 내 풀이 이력: 총 {total_attempts}회 시도 ┃ 맞음 {q_history['correct']}회 / 틀림 {q_history['incorrect']}회")
