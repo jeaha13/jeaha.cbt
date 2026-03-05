@@ -11,63 +11,56 @@ from PIL import Image
 # ==========================================
 st.set_page_config(page_title="산업안전기사 마스터 CBT", page_icon="🚧", layout="centered")
 
-# 그래프 한글 깨짐 방지
 plt.rcParams['font.family'] = 'Malgun Gothic'
 plt.rcParams['axes.unicode_minus'] = False
 
-# 파일명 설정
 FILE_NAME = "산업안전기사_실기_문제은행.xlsx"
 USER_DB = "users_db.json"
 STATS_FILE = "stats.json" 
 
 # ==========================================
-# ⚙️ 통계 및 데이터 관리 도우미 함수들
+# ⚙️ 통계 및 데이터 관리 도우미
 # ==========================================
 def load_stats():
     if os.path.exists(STATS_FILE):
-        with open(STATS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        try:
+            with open(STATS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
+        except: return {"total_visits": 0}
     return {"total_visits": 0}
 
 def increment_visits():
     stats = load_stats()
-    stats["total_visits"] += 1
-    with open(STATS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(stats, f)
+    stats["total_visits"] = stats.get("total_visits", 0) + 1
+    with open(STATS_FILE, 'w', encoding='utf-8') as f: json.dump(stats, f)
 
 def load_users():
     if os.path.exists(USER_DB):
-        with open(USER_DB, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        try:
+            with open(USER_DB, 'r', encoding='utf-8') as f: return json.load(f)
+        except: return {}
     return {}
 
 def save_users(users):
-    with open(USER_DB, 'w', encoding='utf-8') as f:
-        json.dump(users, f, ensure_ascii=False, indent=2)
+    with open(USER_DB, 'w', encoding='utf-8') as f: json.dump(users, f, ensure_ascii=False, indent=2)
 
 def load_history():
     history_file = f"{st.session_state.nickname}_학습기록.json"
+    st.session_state.history = {} 
     if os.path.exists(history_file):
-        with open(history_file, 'r', encoding='utf-8') as f:
-            st.session_state.history = json.load(f)
-    else:
-        st.session_state.history = {}
+        try:
+            with open(history_file, 'r', encoding='utf-8') as f:
+                loaded = json.load(f)
+                if loaded: st.session_state.history = loaded
+        except: pass
 
 def save_history(question_text, is_correct):
-    if st.session_state.history is None:
-        st.session_state.history = {}
-        
+    if not st.session_state.get('history'): st.session_state.history = {}
     if question_text not in st.session_state.history:
         st.session_state.history[question_text] = {"correct": 0, "incorrect": 0}
-        
-    if is_correct:
-        st.session_state.history[question_text]["correct"] += 1
-    else:
-        st.session_state.history[question_text]["incorrect"] += 1
-        
+    if is_correct: st.session_state.history[question_text]["correct"] += 1
+    else: st.session_state.history[question_text]["incorrect"] += 1
     history_file = f"{st.session_state.nickname}_학습기록.json"
-    with open(history_file, 'w', encoding='utf-8') as f:
-        json.dump(st.session_state.history, f, ensure_ascii=False, indent=2)
+    with open(history_file, 'w', encoding='utf-8') as f: json.dump(st.session_state.history, f, ensure_ascii=False, indent=2)
 
 def save_incorrect_answer(row):
     note_filename = f"{st.session_state.nickname}_오답노트.xlsx"
@@ -77,8 +70,7 @@ def save_incorrect_answer(row):
         if row['문제'] not in df_old['문제'].values:
             df_combined = pd.concat([df_old, df_new], ignore_index=True)
             df_combined.to_excel(note_filename, index=False)
-    else:
-        df_new.to_excel(note_filename, index=False)
+    else: df_new.to_excel(note_filename, index=False)
 
 def remove_from_incorrect_note(question_text):
     note_filename = f"{st.session_state.nickname}_오답노트.xlsx"
@@ -101,7 +93,6 @@ def toggle_bookmark(row):
     mark_filename = f"{st.session_state.nickname}_즐겨찾기.xlsx"
     q_text = row['문제']
     df_new_row = pd.DataFrame([row])
-    
     if os.path.exists(mark_filename):
         df_old = pd.read_excel(mark_filename)
         if q_text in df_old['문제'].values:
@@ -144,39 +135,29 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark):
     st.session_state.start_time = time.time()
     st.session_state.page = 'quiz'
 
-# 세션 상태(Session State) 완벽 초기화 (에러 방지)
+# 세션 상태 초기화
 keys_to_init = [
     'page', 'nickname', 'df', 'index', 'score', 'total_possible_score', 
-    'correct_cnt', 'incorrect_cnt', 'show_answer', 'start_time',
+    'correct_cnt', 'incorrect_cnt', 'show_answer', 'history', 'start_time',
     'is_review_mode', 'is_bookmark_mode', 'is_mock_exam', 'has_visited'
 ]
 for key in keys_to_init:
-    if key not in st.session_state:
-        st.session_state[key] = None
-
-# history는 무조건 빈 딕셔너리로 확실하게 세팅!
-if 'history' not in st.session_state or st.session_state.history is None:
-    st.session_state.history = {}
-
-if st.session_state.page is None:
-    st.session_state.page = 'login'
-
-if st.session_state.has_visited is None:
-    st.session_state.has_visited = False
-
-# 방문자 수 1회 증가 로직
+    if key not in st.session_state: st.session_state[key] = None
+if st.session_state.page is None: st.session_state.page = 'login'
+if st.session_state.has_visited is None: st.session_state.has_visited = False
 if not st.session_state.has_visited:
     increment_visits()
     st.session_state.has_visited = True
 
 # ==========================================
-# 화면 0: 로그인 및 회원가입 화면
+# ⭐ 화면 0: 로그인 / 회원가입 / 비밀번호 찾기
 # ==========================================
 if st.session_state.page == 'login':
     st.markdown("<h1 style='text-align: center;'>🚧 산업안전기사 마스터 CBT</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center;'>학습을 시작하려면 로그인해 주세요.</p>", unsafe_allow_html=True)
     
-    tab1, tab2 = st.tabs(["🔑 로그인", "📝 회원가입"])
+    # 탭 3개로 확장!
+    tab1, tab2, tab3 = st.tabs(["🔑 로그인", "📝 회원가입", "🔍 비밀번호 찾기"])
     
     with tab1:
         st.subheader("로그인")
@@ -185,43 +166,62 @@ if st.session_state.page == 'login':
         
         if st.button("접속하기", use_container_width=True, type="primary"):
             users = load_users()
-            if login_id in users and users[login_id] == login_pw:
-                st.session_state.nickname = login_id
+            if login_id in users:
+                user_data = users[login_id]
+                # 기존 가입자(문자열)와 신규 가입자(딕셔너리) 모두 호환되도록 처리
+                saved_pw = user_data["pw"] if isinstance(user_data, dict) else user_data
                 
-                # ⭐ 관리자도 접속할 때 역사를 반드시 불러오도록 수정!
-                load_history()
-                
-                if login_id == "펭귄주인장":
-                    st.toast("👑 최고 관리자 권한으로 접속했습니다!")
-                    time.sleep(1)
-                    st.session_state.page = 'admin_dashboard'
-                    st.rerun()
-                else:
-                    st.success(f"환영합니다, {login_id}님!")
-                    time.sleep(0.5)
-                    st.session_state.page = 'selection'
-                    st.rerun()
-            else:
-                st.error("아이디 또는 비밀번호가 일치하지 않습니다.")
+                if saved_pw == login_pw:
+                    st.session_state.nickname = login_id
+                    load_history() # 기록 불러오기
+                    
+                    if login_id == "펭귄주인장":
+                        st.toast("👑 최고 관리자 권한으로 접속했습니다!")
+                        time.sleep(1)
+                        st.session_state.page = 'admin_dashboard'
+                        st.rerun()
+                    else:
+                        st.success(f"환영합니다, {login_id}님!")
+                        time.sleep(0.5)
+                        st.session_state.page = 'selection'
+                        st.rerun()
+                else: st.error("비밀번호가 일치하지 않습니다.")
+            else: st.error("존재하지 않는 아이디입니다.")
 
     with tab2:
         st.subheader("새 계정 만들기")
         new_id = st.text_input("사용할 아이디 (ID)", key="new_id")
         new_pw = st.text_input("사용할 비밀번호 (PW)", type="password", key="new_pw")
         new_pw2 = st.text_input("비밀번호 확인", type="password", key="new_pw2")
+        new_hint = st.text_input("💡 비밀번호 찾기용 힌트 (예: 내 보물 1호는?)", placeholder="나만 아는 단어를 입력하세요", key="new_hint")
         
         if st.button("가입하기", use_container_width=True):
             users = load_users()
-            if new_id in users:
-                st.error("⚠️ 이미 존재하는 아이디입니다. 다른 아이디를 입력해 주세요.")
-            elif new_pw != new_pw2:
-                st.error("⚠️ 비밀번호가 서로 일치하지 않습니다.")
-            elif len(new_id) < 2 or len(new_pw) < 2:
-                st.warning("⚠️ 아이디와 비밀번호는 2글자 이상 입력해 주세요.")
+            if new_id in users: st.error("⚠️ 이미 존재하는 아이디입니다. 다른 아이디를 입력해 주세요.")
+            elif new_pw != new_pw2: st.error("⚠️ 비밀번호가 서로 일치하지 않습니다.")
+            elif len(new_id) < 2 or len(new_pw) < 2: st.warning("⚠️ 아이디와 비밀번호는 2글자 이상 입력해 주세요.")
+            elif not new_hint: st.warning("⚠️ 비밀번호 찾기용 힌트 답변을 입력해 주세요.")
             else:
-                users[new_id] = new_pw
+                users[new_id] = {"pw": new_pw, "hint": new_hint} # 힌트와 함께 저장!
                 save_users(users)
                 st.success(f"🎉 회원가입이 완료되었습니다! [🔑 로그인] 탭에서 접속해 주세요.")
+
+    with tab3:
+        st.subheader("비밀번호 찾기")
+        st.caption("회원가입 시 입력했던 힌트 답변을 통해 비밀번호를 찾을 수 있습니다.")
+        find_id = st.text_input("가입한 아이디", key="find_id")
+        find_hint = st.text_input("💡 힌트 답변", key="find_hint")
+        
+        if st.button("비밀번호 확인", use_container_width=True):
+            users = load_users()
+            if find_id in users:
+                user_data = users[find_id]
+                if isinstance(user_data, dict):
+                    if user_data.get("hint") == find_hint:
+                        st.success(f"회원님의 비밀번호는 **{user_data['pw']}** 입니다.")
+                    else: st.error("힌트 답변이 일치하지 않습니다.")
+                else: st.warning("초기 버전에서 가입된 계정(펭귄주인장, test 등)은 힌트가 설정되어 있지 않습니다.")
+            else: st.error("존재하지 않는 아이디입니다.")
 
 # ==========================================
 # 👑 화면 0-1: 관리자 전용 대시보드
@@ -229,24 +229,16 @@ if st.session_state.page == 'login':
 elif st.session_state.page == 'admin_dashboard':
     st.title(f"👑 {st.session_state.nickname}님의 관리자 대시보드")
     st.write("CBT 웹사이트의 실시간 현황입니다.")
-    
     stats = load_stats()
     users = load_users()
-    
     col1, col2 = st.columns(2)
-    with col1:
-        st.metric(label="👁️ 총 누적 접속 횟수", value=f"{stats['total_visits']} 회")
-    with col2:
-        st.metric(label="👥 가입한 회원 수", value=f"{len(users)} 명")
-        
+    with col1: st.metric(label="👁️ 총 누적 접속 횟수", value=f"{stats.get('total_visits', 0)} 회")
+    with col2: st.metric(label="👥 가입한 회원 수", value=f"{len(users)} 명")
     st.write("---")
     st.subheader("📋 가입된 회원 목록")
     user_list = list(users.keys())
-    if user_list:
-        st.write(", ".join(user_list))
-    else:
-        st.write("아직 가입한 회원이 없습니다.")
-        
+    if user_list: st.write(", ".join(user_list))
+    else: st.write("아직 가입한 회원이 없습니다.")
     st.write("---")
     col3, col4 = st.columns(2)
     with col3:
@@ -264,27 +256,20 @@ elif st.session_state.page == 'admin_dashboard':
 # ==========================================
 elif st.session_state.page == 'selection':
     st.title(f"환영합니다, {st.session_state.nickname}님! 🎯")
-    
     if not os.path.exists(FILE_NAME):
         st.error(f"⚠️ '{FILE_NAME}' 파일이 폴더에 없습니다! 엑셀 파일을 준비해 주세요.")
         st.stop()
-        
     xls = pd.ExcelFile(FILE_NAME)
     sheet_names = xls.sheet_names
-    
     selected_sheet = st.selectbox("📚 학습할 단원이나 회차를 선택하세요", sheet_names)
     is_shuffle = st.checkbox("🔀 문제 순서 랜덤하게 섞기", value=True)
-    
     st.write("---")
-    
     if st.button("새로운 문제 풀기 🚀", use_container_width=True, type="primary"):
         df = pd.read_excel(FILE_NAME, sheet_name=selected_sheet)
         df.columns = df.columns.str.replace(' ', '')
         if is_shuffle: df = df.sample(frac=1).reset_index(drop=True)
-        
         keywords = ["년", "회", "기출", "과년도"]
         is_mock = any(kw in selected_sheet for kw in keywords)
-        
         init_quiz_state(df, is_mock, False, False)
         st.rerun()
         
@@ -292,8 +277,7 @@ elif st.session_state.page == 'selection':
     with col1:
         if st.button("📝 내 오답노트 풀기", use_container_width=True):
             note_filename = f"{st.session_state.nickname}_오답노트.xlsx"
-            if not os.path.exists(note_filename):
-                st.warning("아직 틀린 문제가 없습니다! 완벽하네요 🎉")
+            if not os.path.exists(note_filename): st.warning("아직 틀린 문제가 없습니다! 완벽하네요 🎉")
             else:
                 df = pd.read_excel(note_filename)
                 df.columns = df.columns.str.replace(' ', '')
@@ -303,8 +287,7 @@ elif st.session_state.page == 'selection':
     with col2:
         if st.button("⭐ 내 즐겨찾기 풀기", use_container_width=True):
             mark_filename = f"{st.session_state.nickname}_즐겨찾기.xlsx"
-            if not os.path.exists(mark_filename):
-                st.warning("아직 저장한 문제가 없습니다! 문제 풀이 중 ⭐ 버튼을 눌러보세요.")
+            if not os.path.exists(mark_filename): st.warning("아직 저장한 문제가 없습니다! 문제 풀이 중 ⭐ 버튼을 눌러보세요.")
             else:
                 df = pd.read_excel(mark_filename)
                 df.columns = df.columns.str.replace(' ', '')
@@ -316,7 +299,7 @@ elif st.session_state.page == 'selection':
     if st.button("로그아웃 🔙", use_container_width=True):
         st.session_state.page = 'login'
         st.session_state.nickname = ''
-        st.session_state.history = {} # 로그아웃 시 기록 초기화
+        st.session_state.history = {}
         st.rerun()
 
 # ==========================================
@@ -326,7 +309,6 @@ elif st.session_state.page == 'quiz':
     df = st.session_state.df
     idx = st.session_state.index
     total_q = len(df)
-    
     if idx >= total_q:
         st.session_state.page = 'result'
         st.rerun()
@@ -335,7 +317,6 @@ elif st.session_state.page == 'quiz':
     q_text = row['문제']
     point = get_question_point(df, idx)
     
-    # 상단 진행도 및 버튼
     c_prog, c_mark, c_home = st.columns([6, 2, 2])
     with c_prog:
         prefix = "[오답노트]" if st.session_state.is_review_mode else "[⭐ 즐겨찾기]" if st.session_state.is_bookmark_mode else "[모의고사]" if st.session_state.is_mock_exam else "[연습모드]"
@@ -346,7 +327,6 @@ elif st.session_state.page == 'quiz':
         bookmarked = is_bookmarked(q_text)
         btn_text = "🌟 저장됨 (취소)" if bookmarked else "⭐ 문제 저장"
         btn_type = "primary" if bookmarked else "secondary"
-        
         if st.button(btn_text, type=btn_type, use_container_width=True):
             now_saved = toggle_bookmark(row)
             if now_saved: st.toast("⭐ 즐겨찾기에 추가되었습니다!")
@@ -358,34 +338,24 @@ elif st.session_state.page == 'quiz':
             st.session_state.page = 'selection'
             st.rerun()
 
-    # ⭐ 안전하게 history 가져오기 (에러 방지 핵심)
-    if st.session_state.history is None:
-        st.session_state.history = {}
+    # ⭐ 관리자 에러 원천 차단!
+    if not st.session_state.get('history'): st.session_state.history = {}
     q_history = st.session_state.history.get(q_text, {"correct": 0, "incorrect": 0})
     
     total_attempts = q_history["correct"] + q_history["incorrect"]
-    if total_attempts > 0:
-        st.caption(f"📊 내 풀이 이력: 총 {total_attempts}회 시도 ┃ 맞음 {q_history['correct']}회 / 틀림 {q_history['incorrect']}회")
-    else:
-        st.caption("✨ 처음 푸는 문제입니다!")
+    if total_attempts > 0: st.caption(f"📊 내 풀이 이력: 총 {total_attempts}회 시도 ┃ 맞음 {q_history['correct']}회 / 틀림 {q_history['incorrect']}회")
+    else: st.caption("✨ 처음 푸는 문제입니다!")
             
     st.divider()
-    
-    # 1. 문제 텍스트
     st.subheader(f"{q_text}")
     
-    # 2. [보기] 박스
     bogi_col = '보기' if '보기' in df.columns else '[보기]' if '[보기]' in df.columns else None
     if bogi_col and pd.notna(row.get(bogi_col)):
         bogi_text = str(row[bogi_col]).strip()
         if bogi_text and bogi_text.lower() != 'nan':
-            bogi_html = f"""
-            <div style="background-color: #ffffff; padding: 15px; border-radius: 8px; white-space: pre-wrap; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;"><strong>[보기]</strong><br><br>{bogi_text}</div>
-            <br>
-            """
+            bogi_html = f"""<div style="background-color: #ffffff; padding: 15px; border-radius: 8px; white-space: pre-wrap; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;"><strong>[보기]</strong><br><br>{bogi_text}</div><br>"""
             st.markdown(bogi_html, unsafe_allow_html=True)
             
-    # 3. 문제 이미지
     if '문제이미지' in df.columns and pd.notna(row['문제이미지']):
         img_name = str(row['문제이미지']).strip()
         if img_name and img_name.lower() != 'nan':
@@ -394,8 +364,6 @@ elif st.session_state.page == 'quiz':
             else: st.error(f"이미지 없음: {img_path}")
                 
     st.write("")
-    
-    # 4. 정답 확인 로직
     is_mcq = '객관식보기' in df.columns and pd.notna(row.get('객관식보기'))
 
     def go_next(is_correct):
@@ -407,23 +375,19 @@ elif st.session_state.page == 'quiz':
         else:
             st.session_state.incorrect_cnt += 1
             if not st.session_state.is_review_mode: save_incorrect_answer(row)
-                
         st.session_state.index += 1
         st.session_state.show_answer = False
         st.rerun()
 
-    # 정답을 아직 안 본 상태
     if not st.session_state.show_answer:
         if is_mcq:
             options_text = str(row['객관식보기'])
             opts = [opt.strip() for opt in options_text.split('\n') if opt.strip()]
             if len(opts) < 2: opts = ["1번", "2번", "3번", "4번"]
-            
             for i, opt in enumerate(opts):
                 if st.button(opt, key=f"opt_{i}", use_container_width=True):
                     ans_val = str(row.get('정답', '')).strip()
                     if ans_val.endswith(".0"): ans_val = ans_val[:-2]
-                    
                     if str(i+1) == ans_val:
                         if st.session_state.is_review_mode: st.toast("⭕ 정답입니다! (오답노트에서 삭제됨)")
                         else: st.toast("⭕ 정답입니다!")
@@ -437,17 +401,11 @@ elif st.session_state.page == 'quiz':
                 st.session_state.show_answer = True
                 st.rerun()
 
-    # 정답 및 해설을 보는 상태
     if st.session_state.show_answer:
         st.write("---")
-        
         raw_ans = row.get('해설')
         ans_text = "" if pd.isna(raw_ans) else str(raw_ans).strip()
-        
-        ans_html = f"""
-        <div style="background-color: #f1f8e9; padding: 20px; border-radius: 8px; white-space: pre-wrap; font-size: 15px; color: #2c3e50; border-left: 5px solid #8bc34a; line-height: 1.6;"><strong>[정답 및 해설]</strong><br><br>{ans_text}</div>
-        <br>
-        """
+        ans_html = f"""<div style="background-color: #f1f8e9; padding: 20px; border-radius: 8px; white-space: pre-wrap; font-size: 15px; color: #2c3e50; border-left: 5px solid #8bc34a; line-height: 1.6;"><strong>[정답 및 해설]</strong><br><br>{ans_text}</div><br>"""
         st.markdown(ans_html, unsafe_allow_html=True)
         
         if '해설이미지' in df.columns and pd.notna(row['해설이미지']):
@@ -470,12 +428,10 @@ elif st.session_state.page == 'quiz':
 elif st.session_state.page == 'result':
     st.title("🎉 학습 완료!")
     st.balloons()
-    
     elapsed_sec = int(time.time() - st.session_state.start_time)
     mins, secs = divmod(elapsed_sec, 60)
     hours, mins = divmod(mins, 60)
     time_str = f"{hours}시간 {mins}분 {secs}초" if hours > 0 else f"{mins}분 {secs}초"
-
     total_q = len(st.session_state.df)
     correct = st.session_state.correct_cnt
     incorrect = st.session_state.incorrect_cnt
@@ -503,17 +459,14 @@ elif st.session_state.page == 'result':
                     df_left = df_left.sample(frac=1).reset_index(drop=True) 
                     init_quiz_state(df_left, False, True, False)
                     st.rerun()
-            else:
-                st.success(f"🎉 오답노트를 모두 정복했습니다!")
+            else: st.success(f"🎉 오답노트를 모두 정복했습니다!")
                 
     else:
         title_prefix = "⭐ 즐겨찾기 복습 결과" if st.session_state.is_bookmark_mode else "📚 문제 풀이 결과"
-        
         if st.session_state.is_mock_exam:
             final_score = st.session_state.score
             total_score = st.session_state.total_possible_score
             st.markdown(f"### 내 점수: <span style='color:#3498db'>{final_score}점</span> / 총점: {total_score}점", unsafe_allow_html=True)
-            
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 4))
             fig.patch.set_facecolor('#f9f9f9')
             labels = ['맞은 문제', '틀린 문제']
@@ -527,11 +480,9 @@ elif st.session_state.page == 'result':
             ax2.set_title('점수 현황', fontweight='bold', pad=15)
             fig.tight_layout()
             st.pyplot(fig)
-            
         else:
             st.markdown(f"### {title_prefix}")
             st.markdown(f"### 총 {total_q}문제 중 {correct}문제를 맞혔습니다! (정답률: <span style='color:#3498db'>{acc:.1f}%</span>)", unsafe_allow_html=True)
-            
             fig, ax = plt.subplots(figsize=(6, 4))
             fig.patch.set_facecolor('#f9f9f9')
             labels = ['맞은 문제', '틀린 문제']
@@ -560,8 +511,7 @@ elif st.session_state.page == 'result':
             else:
                 if st.button("📝 오답노트 바로가기", use_container_width=True):
                     note_filename = f"{st.session_state.nickname}_오답노트.xlsx"
-                    if not os.path.exists(note_filename):
-                        st.warning("아직 틀린 문제가 없습니다!")
+                    if not os.path.exists(note_filename): st.warning("아직 틀린 문제가 없습니다!")
                     else:
                         df_left = pd.read_excel(note_filename)
                         df_left.columns = df_left.columns.str.replace(' ', '')
