@@ -5,6 +5,9 @@ import json
 import time
 import matplotlib.pyplot as plt
 from PIL import Image
+import zipfile
+import io
+import glob
 
 # ==========================================
 # 1. 웹사이트 기본 설정 및 폰트 세팅
@@ -226,7 +229,7 @@ if st.session_state.page == 'login':
             else: st.error("존재하지 않는 아이디입니다.")
 
 # ==========================================
-# 👑 화면 0-1: 관리자 전용 대시보드
+# 👑 화면 0-1: 관리자 전용 대시보드 (백업 기능 탑재!)
 # ==========================================
 elif st.session_state.page == 'admin_dashboard':
     st.title(f"👑 {st.session_state.nickname}님의 관리자 대시보드")
@@ -242,9 +245,33 @@ elif st.session_state.page == 'admin_dashboard':
     if user_list: st.write(", ".join(user_list))
     else: st.write("아직 가입한 회원이 없습니다.")
     st.write("---")
+    
+    # ⭐ V15 백업 및 복구 센터
+    st.subheader("💾 서버 초기화 방어 센터 (백업/복구)")
+    st.info("💡 깃허브에 엑셀 파일이나 코드를 업데이트하면 서버가 재부팅되어 회원 정보가 모두 날아갑니다. 업데이트 전에 반드시 **백업**을 받고, 업데이트 후 **복구**하세요!")
+    
+    # 1. 백업 버튼 (ZIP 생성)
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        # 모든 json 파일(회원정보, 통계, 개인학습기록) 압축
+        for f in glob.glob("*.json"): zf.write(f)
+        # 모든 개인 오답노트/즐겨찾기 엑셀 파일 압축
+        for f in glob.glob("*_오답노트.xlsx"): zf.write(f)
+        for f in glob.glob("*_즐겨찾기.xlsx"): zf.write(f)
+        
+    st.download_button("📥 1단계: 모든 데이터 영혼 백업 (ZIP 다운로드)", data=zip_buffer.getvalue(), file_name="cbt_all_backup.zip", mime="application/zip", use_container_width=True, type="primary")
+    
+    # 2. 복구 업로더
+    uploaded_zip = st.file_uploader("📤 2단계: 백업한 ZIP 파일 복구하기 (여기에 드래그)", type="zip")
+    if uploaded_zip is not None:
+        with zipfile.ZipFile(uploaded_zip, "r") as zf:
+            zf.extractall()
+        st.success("✅ 모든 회원 데이터와 오답노트가 완벽하게 복구되었습니다! 키보드 F5(새로고침)를 눌러주세요.")
+        
+    st.write("---")
     col3, col4 = st.columns(2)
     with col3:
-        if st.button("나도 문제 풀러 가기 🚀", use_container_width=True, type="primary"):
+        if st.button("나도 문제 풀러 가기 🚀", use_container_width=True):
             st.session_state.page = 'selection'
             st.rerun()
     with col4:
@@ -359,7 +386,6 @@ elif st.session_state.page == 'quiz':
             bogi_html = f"""<div style="background-color: #ffffff; padding: 15px; border-radius: 8px; white-space: pre-wrap; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;"><strong>[보기]</strong><br><br>{bogi_text}</div><br>"""
             st.markdown(bogi_html, unsafe_allow_html=True)
             
-    # ⭐ [V14] 문제 이미지: 너비 100% 자동 맞춤 기능 추가!
     if '문제이미지' in df.columns and pd.notna(row['문제이미지']):
         img_names_raw = str(row['문제이미지']).strip()
         if img_names_raw and img_names_raw.lower() != 'nan':
@@ -367,10 +393,9 @@ elif st.session_state.page == 'quiz':
             
             for img_name in img_names:
                 img_path = os.path.join("사진폴더", img_name)
-                # use_container_width=True 를 추가해서 짤림 방지!
                 if os.path.exists(img_path): 
                     st.image(Image.open(img_path), use_container_width=True)
-                    st.write("") # 사진들 사이에 약간의 여백 추가
+                    st.write("") 
                 else: st.error(f"이미지 없음: {img_path}")
                 
     st.write("")
@@ -418,7 +443,6 @@ elif st.session_state.page == 'quiz':
         ans_html = f"""<div style="background-color: #f1f8e9; padding: 20px; border-radius: 8px; white-space: pre-wrap; font-size: 15px; color: #2c3e50; border-left: 5px solid #8bc34a; line-height: 1.6;"><strong>[정답 및 해설]</strong><br><br>{ans_text}</div><br>"""
         st.markdown(ans_html, unsafe_allow_html=True)
         
-        # ⭐ [V14] 해설 이미지: 너비 100% 자동 맞춤 기능 추가!
         if '해설이미지' in df.columns and pd.notna(row['해설이미지']):
             img_names_raw = str(row['해설이미지']).strip()
             if img_names_raw and img_names_raw.lower() != 'nan':
@@ -426,7 +450,6 @@ elif st.session_state.page == 'quiz':
                 
                 for img_name in img_names:
                     img_path = os.path.join("사진폴더", img_name)
-                    # use_container_width=True 를 추가해서 짤림 방지!
                     if os.path.exists(img_path): 
                         st.image(Image.open(img_path), use_container_width=True)
                         st.write("")
@@ -539,3 +562,4 @@ elif st.session_state.page == 'result':
 
 # 하단 워터마크
 st.markdown("<br><br><br><p style='text-align: center; color: gray; font-size: 12px;'>© 2026 Designed & Programmed by [펭귄주인장]. 프로그램 무단 복제 및 상업적 배포를 엄격히 금지합니다.</p>", unsafe_allow_html=True)
+#2026.03.13
