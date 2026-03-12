@@ -54,7 +54,7 @@ def load_history():
         except: pass
 
 def save_history(question_text, is_correct):
-    if not st.session_state.get('history'): st.session_state.history = {}
+    if getattr(st.session_state, 'history', None) is None: st.session_state.history = {}
     if question_text not in st.session_state.history:
         st.session_state.history[question_text] = {"correct": 0, "incorrect": 0}
     if is_correct: st.session_state.history[question_text]["correct"] += 1
@@ -138,11 +138,15 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark):
 # 세션 상태 초기화
 keys_to_init = [
     'page', 'nickname', 'df', 'index', 'score', 'total_possible_score', 
-    'correct_cnt', 'incorrect_cnt', 'show_answer', 'history', 'start_time',
+    'correct_cnt', 'incorrect_cnt', 'show_answer', 'start_time',
     'is_review_mode', 'is_bookmark_mode', 'is_mock_exam', 'has_visited'
 ]
 for key in keys_to_init:
     if key not in st.session_state: st.session_state[key] = None
+
+if 'history' not in st.session_state or st.session_state.history is None:
+    st.session_state.history = {}
+
 if st.session_state.page is None: st.session_state.page = 'login'
 if st.session_state.has_visited is None: st.session_state.has_visited = False
 if not st.session_state.has_visited:
@@ -150,13 +154,12 @@ if not st.session_state.has_visited:
     st.session_state.has_visited = True
 
 # ==========================================
-# ⭐ 화면 0: 로그인 / 회원가입 / 비밀번호 찾기
+# 화면 0: 로그인 / 회원가입 / 비밀번호 찾기
 # ==========================================
 if st.session_state.page == 'login':
     st.markdown("<h1 style='text-align: center;'>🚧 산업안전기사 마스터 CBT</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center;'>학습을 시작하려면 로그인해 주세요.</p>", unsafe_allow_html=True)
     
-    # 탭 3개로 확장!
     tab1, tab2, tab3 = st.tabs(["🔑 로그인", "📝 회원가입", "🔍 비밀번호 찾기"])
     
     with tab1:
@@ -168,12 +171,11 @@ if st.session_state.page == 'login':
             users = load_users()
             if login_id in users:
                 user_data = users[login_id]
-                # 기존 가입자(문자열)와 신규 가입자(딕셔너리) 모두 호환되도록 처리
                 saved_pw = user_data["pw"] if isinstance(user_data, dict) else user_data
                 
                 if saved_pw == login_pw:
                     st.session_state.nickname = login_id
-                    load_history() # 기록 불러오기
+                    load_history() 
                     
                     if login_id == "펭귄주인장":
                         st.toast("👑 최고 관리자 권한으로 접속했습니다!")
@@ -202,7 +204,7 @@ if st.session_state.page == 'login':
             elif len(new_id) < 2 or len(new_pw) < 2: st.warning("⚠️ 아이디와 비밀번호는 2글자 이상 입력해 주세요.")
             elif not new_hint: st.warning("⚠️ 비밀번호 찾기용 힌트 답변을 입력해 주세요.")
             else:
-                users[new_id] = {"pw": new_pw, "hint": new_hint} # 힌트와 함께 저장!
+                users[new_id] = {"pw": new_pw, "hint": new_hint}
                 save_users(users)
                 st.success(f"🎉 회원가입이 완료되었습니다! [🔑 로그인] 탭에서 접속해 주세요.")
 
@@ -220,7 +222,7 @@ if st.session_state.page == 'login':
                     if user_data.get("hint") == find_hint:
                         st.success(f"회원님의 비밀번호는 **{user_data['pw']}** 입니다.")
                     else: st.error("힌트 답변이 일치하지 않습니다.")
-                else: st.warning("초기 버전에서 가입된 계정(펭귄주인장, test 등)은 힌트가 설정되어 있지 않습니다.")
+                else: st.warning("초기 버전에서 가입된 계정은 힌트가 설정되어 있지 않습니다.")
             else: st.error("존재하지 않는 아이디입니다.")
 
 # ==========================================
@@ -338,8 +340,9 @@ elif st.session_state.page == 'quiz':
             st.session_state.page = 'selection'
             st.rerun()
 
-    # ⭐ 관리자 에러 원천 차단!
-    if not st.session_state.get('history'): st.session_state.history = {}
+    if getattr(st.session_state, 'history', None) is None:
+        st.session_state.history = {}
+        
     q_history = st.session_state.history.get(q_text, {"correct": 0, "incorrect": 0})
     
     total_attempts = q_history["correct"] + q_history["incorrect"]
@@ -356,12 +359,19 @@ elif st.session_state.page == 'quiz':
             bogi_html = f"""<div style="background-color: #ffffff; padding: 15px; border-radius: 8px; white-space: pre-wrap; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;"><strong>[보기]</strong><br><br>{bogi_text}</div><br>"""
             st.markdown(bogi_html, unsafe_allow_html=True)
             
+    # ⭐ [V14] 문제 이미지: 너비 100% 자동 맞춤 기능 추가!
     if '문제이미지' in df.columns and pd.notna(row['문제이미지']):
-        img_name = str(row['문제이미지']).strip()
-        if img_name and img_name.lower() != 'nan':
-            img_path = os.path.join("사진폴더", img_name)
-            if os.path.exists(img_path): st.image(Image.open(img_path))
-            else: st.error(f"이미지 없음: {img_path}")
+        img_names_raw = str(row['문제이미지']).strip()
+        if img_names_raw and img_names_raw.lower() != 'nan':
+            img_names = [name.strip() for name in img_names_raw.replace(';', ',').split(',') if name.strip()]
+            
+            for img_name in img_names:
+                img_path = os.path.join("사진폴더", img_name)
+                # use_container_width=True 를 추가해서 짤림 방지!
+                if os.path.exists(img_path): 
+                    st.image(Image.open(img_path), use_container_width=True)
+                    st.write("") # 사진들 사이에 약간의 여백 추가
+                else: st.error(f"이미지 없음: {img_path}")
                 
     st.write("")
     is_mcq = '객관식보기' in df.columns and pd.notna(row.get('객관식보기'))
@@ -408,11 +418,19 @@ elif st.session_state.page == 'quiz':
         ans_html = f"""<div style="background-color: #f1f8e9; padding: 20px; border-radius: 8px; white-space: pre-wrap; font-size: 15px; color: #2c3e50; border-left: 5px solid #8bc34a; line-height: 1.6;"><strong>[정답 및 해설]</strong><br><br>{ans_text}</div><br>"""
         st.markdown(ans_html, unsafe_allow_html=True)
         
+        # ⭐ [V14] 해설 이미지: 너비 100% 자동 맞춤 기능 추가!
         if '해설이미지' in df.columns and pd.notna(row['해설이미지']):
-            img_name = str(row['해설이미지']).strip()
-            if img_name and img_name.lower() != 'nan':
-                img_path = os.path.join("사진폴더", img_name)
-                if os.path.exists(img_path): st.image(Image.open(img_path))
+            img_names_raw = str(row['해설이미지']).strip()
+            if img_names_raw and img_names_raw.lower() != 'nan':
+                img_names = [name.strip() for name in img_names_raw.replace(';', ',').split(',') if name.strip()]
+                
+                for img_name in img_names:
+                    img_path = os.path.join("사진폴더", img_name)
+                    # use_container_width=True 를 추가해서 짤림 방지!
+                    if os.path.exists(img_path): 
+                        st.image(Image.open(img_path), use_container_width=True)
+                        st.write("")
+                    else: st.error(f"이미지 없음: {img_path}")
                 
         st.write("결과를 스스로 채점해 주세요.")
         c1, c2 = st.columns(2)
