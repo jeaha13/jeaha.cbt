@@ -21,7 +21,7 @@ FILE_NAME = "산업안전기사_실기_문제은행.xlsx"
 STATS_FILE = "stats.json" 
 
 # ==========================================
-# ⚙️ 접속자 IP 추출 도우미 (스트림릿 최신 기능)
+# ⚙️ 접속자 IP 추출 도우미
 # ==========================================
 def get_client_ip():
     ip = "Guest"
@@ -31,8 +31,6 @@ def get_client_ip():
             if x_forwarded:
                 ip = x_forwarded.split(',')[0].strip()
     except: pass
-    
-    # 윈도우 파일명에 쓸 수 없는 특수문자 제거
     safe_ip = "".join(c for c in ip if c.isalnum() or c in ".-_")
     return safe_ip if safe_ip else "Guest"
 
@@ -156,14 +154,12 @@ for key in keys_to_init:
 
 if st.session_state.is_admin is None: st.session_state.is_admin = False
 
-# 닉네임이 없으면 접속한 사람의 IP를 닉네임으로 부여!
 if 'nickname' not in st.session_state or st.session_state.nickname is None:
     st.session_state.nickname = get_client_ip()
 
 if 'history' not in st.session_state or st.session_state.history is None:
     st.session_state.history = {}
 
-# 처음에 무조건 selection(단원 선택) 화면으로 직행!
 if st.session_state.page is None or st.session_state.page == 'login': 
     st.session_state.page = 'selection'
     load_history()
@@ -180,7 +176,6 @@ with st.sidebar:
     st.caption("⚙️ 사이트 설정")
     admin_pw = st.text_input("관리자 코드", type="password")
     
-    # 펭귄주인장님 비밀번호 확인!
     if admin_pw == "산업안전기사1회!":
         if not st.session_state.is_admin:
             st.session_state.is_admin = True
@@ -193,7 +188,7 @@ with st.sidebar:
             st.session_state.page = 'admin_dashboard'
             st.rerun()
     else:
-        if st.session_state.is_admin: # 비밀번호 지우면 다시 일반 IP 모드로 강등
+        if st.session_state.is_admin:
             st.session_state.is_admin = False
             st.session_state.nickname = get_client_ip()
             load_history()
@@ -205,7 +200,6 @@ if st.session_state.page == 'admin_dashboard' and st.session_state.is_admin:
     st.title(f"👑 펭귄주인장님의 대시보드")
     stats = load_stats()
     
-    # 유저 DB가 없으니, 생성된 학습기록 파일 개수로 IP 수를 측정합니다.
     ip_users = len(glob.glob("*_학습기록.json"))
     
     col1, col2 = st.columns(2)
@@ -213,7 +207,6 @@ if st.session_state.page == 'admin_dashboard' and st.session_state.is_admin:
     with col2: st.metric(label="👥 문제를 푼 기기(IP) 수", value=f"{ip_users} 대")
     st.write("---")
     
-    # V15 백업 및 복구 센터 유지!
     st.subheader("💾 서버 초기화 방어 센터 (백업/복구)")
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -235,7 +228,7 @@ if st.session_state.page == 'admin_dashboard' and st.session_state.is_admin:
         st.rerun()
 
 # ==========================================
-# 화면 1: 단원 선택 화면 (로그인 없이 바로 뜸!)
+# ⭐ 화면 1: 단원 선택 화면 (V17 한눈에 보기 기능 추가!)
 # ==========================================
 elif st.session_state.page == 'selection':
     st.markdown("<h1 style='text-align: center;'>🚧 산업안전기사 마스터 CBT</h1>", unsafe_allow_html=True)
@@ -251,19 +244,43 @@ elif st.session_state.page == 'selection':
         
     xls = pd.ExcelFile(FILE_NAME)
     sheet_names = xls.sheet_names
-    selected_sheet = st.selectbox("📚 학습할 단원이나 회차를 선택하세요", sheet_names)
-    is_shuffle = st.checkbox("🔀 문제 순서 랜덤하게 섞기", value=True)
-    st.write("---")
     
-    if st.button("새로운 문제 풀기 🚀", use_container_width=True, type="primary"):
-        df = pd.read_excel(FILE_NAME, sheet_name=selected_sheet)
+    is_shuffle = st.checkbox("🔀 문제 순서 랜덤하게 섞기", value=True)
+    
+    # 💡 새로운 기능: 보기 모드 선택 토글
+    view_mode = st.radio("단원 목록 보기 방식", ["🔽 드롭다운으로 선택", "🔠 한눈에 펼쳐보기 (리스트)"], horizontal=True, label_visibility="collapsed")
+    
+    # 공통 문제 풀이 시작 함수
+    def start_new_quiz(target_sheet):
+        df = pd.read_excel(FILE_NAME, sheet_name=target_sheet)
         df.columns = df.columns.str.replace(' ', '')
         if is_shuffle: df = df.sample(frac=1).reset_index(drop=True)
         keywords = ["년", "회", "기출", "과년도"]
-        is_mock = any(kw in selected_sheet for kw in keywords)
+        is_mock = any(kw in target_sheet for kw in keywords)
         init_quiz_state(df, is_mock, False, False)
         st.rerun()
-        
+
+    st.write("---")
+    
+    # 모드 1: 기존 드롭다운 방식
+    if "드롭다운" in view_mode:
+        selected_sheet = st.selectbox("📚 학습할 단원이나 회차를 선택하세요", sheet_names)
+        if st.button("새로운 문제 풀기 🚀", use_container_width=True, type="primary"):
+            start_new_quiz(selected_sheet)
+            
+    # 모드 2: 단원 리스트 쫙 펼쳐서 버튼으로 보기
+    else:
+        st.markdown("##### 📚 원하는 단원을 클릭하면 즉시 시작됩니다!")
+        # 단원이 많을 것을 대비해 2열로 깔끔하게 배치합니다.
+        cols = st.columns(2)
+        for i, sheet in enumerate(sheet_names):
+            with cols[i % 2]:
+                # 버튼을 누르면 즉시 해당 단원 시작!
+                if st.button(f"📖 {sheet}", use_container_width=True):
+                    start_new_quiz(sheet)
+
+    st.write("---")
+    
     col1, col2 = st.columns(2)
     with col1:
         if st.button("📝 내 오답노트 풀기", use_container_width=True):
@@ -287,7 +304,7 @@ elif st.session_state.page == 'selection':
                 st.rerun()
 
 # ==========================================
-# 화면 2: 퀴즈 화면 (기존과 동일)
+# 화면 2: 퀴즈 화면
 # ==========================================
 elif st.session_state.page == 'quiz':
     df = st.session_state.df
