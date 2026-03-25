@@ -18,42 +18,25 @@ FILE_NAME = "산업안전기사_실기_문제은행.xlsx"
 STATS_FILE = "stats.json" 
 
 # ==========================================
-# ⚙️ 그림 크기 완벽 통일을 위한 CSS 주입
+# ⚙️ 이미지 HTML 변환 도우미 (박스 안에 자연스럽게 넣기 위함)
 # ==========================================
-st.markdown("""
-<style>
-    .cbt-image-frame {
-        width: 600px; 
-        height: 400px; 
-        border: 2px solid #e0e0e0; 
-        border-radius: 10px; 
-        background-color: white; 
-        display: flex; 
-        justify-content: center;
-        align-items: center;
-        overflow: hidden; 
-        margin: 10px auto; 
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.1); 
-    }
-    .cbt-image-frame img {
-        max-width: 100%; 
-        max-height: 100%; 
-        object-fit: contain; 
-    }
-</style>
-""", unsafe_allow_html=True)
-
-def display_styled_image(image_path):
-    try:
-        if os.path.exists(image_path):
-            with open(image_path, "rb") as image_file:
+def get_images_html(img_names_raw):
+    if pd.isna(img_names_raw): return ""
+    img_names_raw = str(img_names_raw).strip()
+    if not img_names_raw or img_names_raw.lower() == 'nan': return ""
+    
+    img_html = ""
+    img_names = [name.strip() for name in img_names_raw.replace(';', ',').split(',') if name.strip()]
+    for img_name in img_names:
+        img_path = os.path.join("사진폴더", img_name)
+        if os.path.exists(img_path):
+            with open(img_path, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read()).decode()
-            img_html = f'<div class="cbt-image-frame"><img src="data:image/png;base64,{encoded_string}"></div>'
-            st.markdown(img_html, unsafe_allow_html=True)
-            st.write("") 
+            # 텍스트 박스 안에서 그림이 깔끔하게 자리잡도록 내부 액자 스타일 적용!
+            img_html += f'<div style="display: flex; justify-content: center; margin-top: 20px; margin-bottom: 10px;"><div style="width: 100%; max-width: 600px; height: 400px; display: flex; justify-content: center; align-items: center; background-color: white; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; box-shadow: 1px 1px 3px rgba(0,0,0,0.05);"><img src="data:image/png;base64,{encoded_string}" style="max-width: 100%; max-height: 100%; object-fit: contain;"></div></div>'
         else:
-            st.error(f"이미지 없음: {image_path}")
-    except: pass
+            img_html += f'<div style="color: red; text-align: center; margin-top: 10px;">이미지 없음: {img_path}</div>'
+    return img_html
 
 # ==========================================
 # ⚙️ 접속자 IP 및 통계 관리 도우미
@@ -317,16 +300,34 @@ elif st.session_state.page == 'quiz':
     q_text = row['문제']
     point = get_question_point(df, idx)
     
-    c_prog, c_mark, c_home = st.columns([6, 2, 2])
+    # 상단 네비게이션 바
+    c_prev, c_prog, c_mark, c_home = st.columns([1.5, 4.5, 2.5, 1.5])
+    
+    with c_prev:
+        if idx > 0:
+            if st.button("◀ 이전", use_container_width=True):
+                st.session_state.index -= 1
+                st.session_state.show_answer = False
+                st.rerun()
+        else:
+            st.write("") 
+            
     with c_prog:
         prefix = "[오답]" if st.session_state.is_review_mode else "[⭐]" if st.session_state.is_bookmark_mode else "[모의]" if st.session_state.is_mock_exam else "[연습]"
         st.progress((idx) / total_q)
-        st.caption(f"{prefix} 문제 {idx + 1}/{total_q} ({point}점)")
+        st.caption(f"{prefix} {idx + 1}/{total_q} ({point}점)")
+        
     with c_mark:
         bookmarked = is_bookmarked(q_text)
-        if st.button("🌟" if bookmarked else "⭐", use_container_width=True):
-            toggle_bookmark(row)
+        btn_text = "🌟 저장됨" if bookmarked else "⭐ 저장"
+        btn_type = "primary" if bookmarked else "secondary" 
+        
+        if st.button(btn_text, type=btn_type, use_container_width=True):
+            now_saved = toggle_bookmark(row)
+            if now_saved: st.toast("⭐ 즐겨찾기에 추가되었습니다!")
+            else: st.toast("🗑️ 즐겨찾기에서 삭제되었습니다.")
             st.rerun() 
+            
     with c_home:
         if st.button("🏠", use_container_width=True):
             st.session_state.page = 'selection'
@@ -348,18 +349,23 @@ elif st.session_state.page == 'quiz':
     st.divider()
     st.subheader(f"{q_text}")
     
+    # ⭐ [V24] 문제 보기와 이미지를 하나의 박스로 자연스럽게 통합!
     bogi_col = '보기' if '보기' in df.columns else '[보기]' if '[보기]' in df.columns else None
+    bogi_text = ""
     if bogi_col and pd.notna(row.get(bogi_col)):
         bogi_text = str(row[bogi_col]).strip()
-        if bogi_text and bogi_text.lower() != 'nan':
-            st.markdown(f'<div style="background-color: white; padding: 15px; border-radius: 8px; white-space: pre-wrap; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;">{bogi_text}</div><br>', unsafe_allow_html=True)
-            
-    if '문제이미지' in df.columns and pd.notna(row['문제이미지']):
-        img_names_raw = str(row['문제이미지']).strip()
-        if img_names_raw and img_names_raw.lower() != 'nan':
-            img_names = [name.strip() for name in img_names_raw.replace(';', ',').split(',') if name.strip()]
-            for img_name in img_names:
-                display_styled_image(os.path.join("사진폴더", img_name))
+        if bogi_text.lower() == 'nan': bogi_text = ""
+
+    q_imgs_html = get_images_html(row.get('문제이미지'))
+
+    if bogi_text or q_imgs_html:
+        combined_q_html = f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;">'
+        if bogi_text:
+            combined_q_html += f'<strong>[보기]</strong><br><br><div style="white-space: pre-wrap;">{bogi_text}</div>'
+        if q_imgs_html:
+            combined_q_html += q_imgs_html
+        combined_q_html += '</div><br>'
+        st.markdown(combined_q_html, unsafe_allow_html=True)
                 
     st.write("")
     is_mcq = '객관식보기' in df.columns and pd.notna(row.get('객관식보기'))
@@ -395,15 +401,19 @@ elif st.session_state.page == 'quiz':
 
     if st.session_state.show_answer:
         st.divider()
-        ans_text = "" if pd.isna(row.get('해설')) else str(row['해설']).strip()
-        st.markdown(f'<div style="background-color: white; padding: 15px; border-radius: 8px; white-space: pre-wrap; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;"><strong>[정답 및 해설]</strong><br><br>{ans_text}</div><br>', unsafe_allow_html=True)
         
-        if '해설이미지' in df.columns and pd.notna(row['해설이미지']):
-            img_names_raw = str(row['해설이미지']).strip()
-            if img_names_raw and img_names_raw.lower() != 'nan':
-                img_names = [name.strip() for name in img_names_raw.replace(';', ',').split(',') if name.strip()]
-                for img_name in img_names:
-                    display_styled_image(os.path.join("사진폴더", img_name))
+        # ⭐ [V24] 해설 텍스트와 이미지를 하나의 박스로 자연스럽게 통합!
+        ans_text = "" if pd.isna(row.get('해설')) else str(row['해설']).strip()
+        ans_imgs_html = get_images_html(row.get('해설이미지'))
+        
+        combined_a_html = f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;"><strong>[정답 및 해설]</strong><br><br>'
+        if ans_text:
+            combined_a_html += f'<div style="white-space: pre-wrap;">{ans_text}</div>'
+        if ans_imgs_html:
+            combined_a_html += ans_imgs_html
+        combined_a_html += '</div><br>'
+        
+        st.markdown(combined_a_html, unsafe_allow_html=True)
                 
         c1, c2 = st.columns(2)
         with c1:
@@ -412,7 +422,7 @@ elif st.session_state.page == 'quiz':
             if st.button("❌ 틀렸음", use_container_width=True): go_next(False)
 
 # ==========================================
-# ⭐ 화면 3: 결과 대시보드 (한글 깨짐 영구 퇴치!)
+# 화면 3: 결과 대시보드 
 # ==========================================
 elif st.session_state.page == 'result':
     st.title("🎉 학습 완료!")
@@ -434,7 +444,6 @@ elif st.session_state.page == 'result':
         left_cnt = len(pd.read_excel(note_filename)) if os.path.exists(note_filename) else 0
         st.info(f"💡 현재 오답노트에 남은 문제: **{left_cnt}문제**")
         
-        # 남은 오답 다시 풀기 버튼 추가
         if left_cnt > 0:
             if st.button(f"🔁 남은 오답 다시 풀기", use_container_width=True, type="primary"):
                 df_left = pd.read_excel(note_filename)
@@ -454,7 +463,6 @@ elif st.session_state.page == 'result':
             st.markdown(f"### {title_prefix}")
             st.markdown(f"#### 내 점수: <span style='color:#3498db'>{final_score}점</span> / 총점: {total_score}점", unsafe_allow_html=True)
             
-            # 깨지는 그림판 대신 세련된 네이티브 대시보드 사용!
             c1, c2, c3 = st.columns(3)
             c1.metric("🎯 득점률", f"{acc_score:.1f}%")
             c2.metric("⭕ 맞은 문제", f"{correct} 개")
@@ -466,7 +474,6 @@ elif st.session_state.page == 'result':
         else:
             st.markdown(f"### {title_prefix}")
             
-            # 깨지는 그림판 대신 세련된 네이티브 대시보드 사용!
             c1, c2, c3 = st.columns(3)
             c1.metric("🎯 정답률", f"{acc:.1f}%")
             c2.metric("⭕ 맞은 문제", f"{correct} 개")
@@ -475,7 +482,6 @@ elif st.session_state.page == 'result':
             st.caption("나의 달성도")
             st.progress(correct / total_q if total_q > 0 else 0)
 
-        # 즐겨찾기 다시 풀기 버튼 추가
         if st.session_state.is_bookmark_mode:
             st.write("")
             if st.button("🔁 즐겨찾기 다시 풀기", use_container_width=True):
