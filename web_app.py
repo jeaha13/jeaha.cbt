@@ -17,8 +17,9 @@ FILE_NAME = "산업안전기사_실기_문제은행.xlsx"
 STATS_FILE = "stats.json" 
 
 # ==========================================
-# ⚙️ 이미지 자연스러운 핏(Fit) 도우미 (V25 업그레이드!)
+# ⚙️ [V26] 이미지 자연스러운 핏(Natural Fit) 도우미
 # ==========================================
+# 이제 억지로 400px에 가두지 않습니다! 표나 긴 그림도 원본 비율대로 딱 맞게 들어갑니다.
 def get_images_html(img_names_raw):
     if pd.isna(img_names_raw): return ""
     img_names_raw = str(img_names_raw).strip()
@@ -31,7 +32,6 @@ def get_images_html(img_names_raw):
         if os.path.exists(img_path):
             with open(img_path, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read()).decode()
-            # 억지로 가두지 않고 원본 비율을 유지하며 테두리만 예쁘게 감쌉니다!
             img_html += f'<div style="display: flex; justify-content: center; margin-top: 15px; margin-bottom: 15px;"><img src="data:image/png;base64,{encoded_string}" style="max-width: 100%; height: auto; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 1px 1px 3px rgba(0,0,0,0.1);"></div>'
         else:
             img_html += f'<div style="color: red; text-align: center; margin-top: 10px;">이미지 없음: {img_path}</div>'
@@ -69,7 +69,7 @@ def load_history():
         try:
             with open(history_file, 'r', encoding='utf-8') as f:
                 loaded = json.load(f)
-                # 에러 원천 차단: 불러온 데이터가 반드시 딕셔너리일 때만 적용!
+                # 에러 원천 차단: 불러온 데이터가 딕셔너리일 때만 적용!
                 if loaded and isinstance(loaded, dict): 
                     st.session_state.history = loaded
         except: pass
@@ -141,13 +141,12 @@ def calculate_total_possible_score(df):
     for i in range(len(df)): total += get_question_point(df, i)
     return total
 
+# ⭐ [V26] 퀴즈 세션 초기화 (점수 누적 방식 -> 딕셔너리 기록 방식으로 변경!)
 def init_quiz_state(df, is_mock, is_review, is_bookmark):
     st.session_state.df = df
     st.session_state.total_possible_score = calculate_total_possible_score(df)
     st.session_state.index = 0
-    st.session_state.score = 0
-    st.session_state.correct_cnt = 0
-    st.session_state.incorrect_cnt = 0
+    st.session_state.user_answers = {} # 각 문제별 정답 여부 기록!
     st.session_state.show_answer = False
     st.session_state.is_mock_exam = is_mock
     st.session_state.is_review_mode = is_review
@@ -159,9 +158,9 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark):
 # ⭐ 세션 상태 초기화 및 로그인 생략
 # ==========================================
 keys_to_init = [
-    'page', 'df', 'index', 'score', 'total_possible_score', 
-    'correct_cnt', 'incorrect_cnt', 'show_answer', 'start_time',
-    'is_review_mode', 'is_bookmark_mode', 'is_mock_exam', 'has_visited', 'is_admin'
+    'page', 'df', 'index', 'total_possible_score', 'user_answers',
+    'show_answer', 'start_time', 'is_review_mode', 'is_bookmark_mode', 
+    'is_mock_exam', 'has_visited', 'is_admin'
 ]
 for key in keys_to_init:
     if key not in st.session_state: st.session_state[key] = None
@@ -169,11 +168,14 @@ for key in keys_to_init:
 if st.session_state.is_admin is None: st.session_state.is_admin = False
 if 'nickname' not in st.session_state or st.session_state.nickname is None:
     st.session_state.nickname = get_client_ip()
-if 'history' not in st.session_state or st.session_state.history is None:
+if not isinstance(st.session_state.get('history'), dict):
     st.session_state.history = {}
+if st.session_state.user_answers is None: st.session_state.user_answers = {}
+
 if st.session_state.page is None or st.session_state.page == 'login': 
     st.session_state.page = 'selection'
     load_history()
+
 if st.session_state.has_visited is None: st.session_state.has_visited = False
 if not st.session_state.has_visited:
     increment_visits()
@@ -331,7 +333,6 @@ elif st.session_state.page == 'quiz':
             st.session_state.page = 'selection'
             st.rerun()
     
-    # ⭐ 에러 원천 차단: history가 딕셔너리가 아닐 경우 강제 초기화!
     if not isinstance(st.session_state.get('history'), dict):
         st.session_state.history = {}
         
@@ -351,9 +352,6 @@ elif st.session_state.page == 'quiz':
     st.divider()
     st.subheader(f"{q_text}")
     
-    # ==============================================================
-    # ⭐ [V25] 문제 보기 + 이미지 자연스러운 박스 통합 출력
-    # ==============================================================
     bogi_col = '보기' if '보기' in df.columns else '[보기]' if '[보기]' in df.columns else None
     bogi_text = ""
     if bogi_col and pd.notna(row.get(bogi_col)):
@@ -374,15 +372,16 @@ elif st.session_state.page == 'quiz':
     st.write("")
     is_mcq = '객관식보기' in df.columns and pd.notna(row.get('객관식보기'))
 
+    # ⭐ [V26] 점수 뻥튀기 방지: 현재 문제(idx)의 결과만 정확히 기록!
     def go_next(is_correct):
         save_history(q_text, is_correct)
-        if is_correct:
-            st.session_state.correct_cnt += 1
-            st.session_state.score += point
-            if st.session_state.is_review_mode: remove_from_incorrect_note(q_text)
-        else:
-            st.session_state.incorrect_cnt += 1
-            if not st.session_state.is_review_mode: save_incorrect_answer(row)
+        st.session_state.user_answers[st.session_state.index] = is_correct 
+        
+        if is_correct and st.session_state.is_review_mode:
+            remove_from_incorrect_note(q_text)
+        elif not is_correct and not st.session_state.is_review_mode:
+            save_incorrect_answer(row)
+            
         st.session_state.index += 1
         st.session_state.show_answer = False
         st.rerun()
@@ -405,10 +404,6 @@ elif st.session_state.page == 'quiz':
 
     if st.session_state.show_answer:
         st.divider()
-        
-        # ==============================================================
-        # ⭐ [V25] 해설 텍스트 + 이미지 자연스러운 박스 통합 출력
-        # ==============================================================
         ans_text = "" if pd.isna(row.get('해설')) else str(row['해설']).strip()
         ans_imgs_html = get_images_html(row.get('해설이미지'))
         
@@ -435,10 +430,10 @@ elif st.session_state.page == 'result':
     st.balloons()
     mins, secs = divmod(int(time.time() - st.session_state.start_time), 60)
     
-    correct = st.session_state.correct_cnt
-    incorrect = st.session_state.incorrect_cnt
+    # ⭐ [V26] 기록된 user_answers를 바탕으로 정확한 점수 계산!
+    correct = sum(1 for v in st.session_state.user_answers.values() if v)
+    incorrect = sum(1 for v in st.session_state.user_answers.values() if not v)
     total_q = len(st.session_state.df)
-    acc = (correct / total_q * 100) if total_q > 0 else 0
     
     st.subheader(f"⏱️ 소요 시간: {mins}분 {secs}초")
     st.write("---")
@@ -462,7 +457,8 @@ elif st.session_state.page == 'result':
         title_prefix = "⭐ 즐겨찾기 복습 결과" if st.session_state.is_bookmark_mode else "📚 문제 풀이 결과"
         
         if st.session_state.is_mock_exam:
-            final_score = st.session_state.score
+            # ⭐ [V26] 최종 점수 동적 계산 (100% 초과 원천 차단)
+            final_score = sum(get_question_point(st.session_state.df, i) for i, v in st.session_state.user_answers.items() if v)
             total_score = st.session_state.total_possible_score
             acc_score = (final_score / total_score * 100) if total_score > 0 else 0
             
@@ -475,10 +471,13 @@ elif st.session_state.page == 'result':
             c3.metric("❌ 틀린 문제", f"{incorrect} 개")
             
             st.caption("전체 진행률")
-            st.progress(final_score / total_score if total_score > 0 else 0)
+            # 진행률 오류 방지를 위해 0~1 사이로 강제 고정
+            progress_val = (final_score / total_score) if total_score > 0 else 0
+            st.progress(min(max(progress_val, 0.0), 1.0))
             
         else:
             st.markdown(f"### {title_prefix}")
+            acc = (correct / total_q * 100) if total_q > 0 else 0
             
             c1, c2, c3 = st.columns(3)
             c1.metric("🎯 정답률", f"{acc:.1f}%")
@@ -486,7 +485,8 @@ elif st.session_state.page == 'result':
             c3.metric("❌ 틀린 문제", f"{incorrect} 개")
             
             st.caption("나의 달성도")
-            st.progress(correct / total_q if total_q > 0 else 0)
+            progress_val2 = correct / total_q if total_q > 0 else 0
+            st.progress(min(max(progress_val2, 0.0), 1.0))
 
         if st.session_state.is_bookmark_mode:
             st.write("")
