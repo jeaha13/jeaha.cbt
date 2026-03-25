@@ -3,7 +3,6 @@ import pandas as pd
 import os
 import json
 import time
-from PIL import Image
 import zipfile
 import io
 import glob
@@ -18,7 +17,7 @@ FILE_NAME = "산업안전기사_실기_문제은행.xlsx"
 STATS_FILE = "stats.json" 
 
 # ==========================================
-# ⚙️ 이미지 HTML 변환 도우미 (박스 안에 자연스럽게 넣기 위함)
+# ⚙️ 이미지 자연스러운 핏(Fit) 도우미 (V25 업그레이드!)
 # ==========================================
 def get_images_html(img_names_raw):
     if pd.isna(img_names_raw): return ""
@@ -32,8 +31,8 @@ def get_images_html(img_names_raw):
         if os.path.exists(img_path):
             with open(img_path, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read()).decode()
-            # 텍스트 박스 안에서 그림이 깔끔하게 자리잡도록 내부 액자 스타일 적용!
-            img_html += f'<div style="display: flex; justify-content: center; margin-top: 20px; margin-bottom: 10px;"><div style="width: 100%; max-width: 600px; height: 400px; display: flex; justify-content: center; align-items: center; background-color: white; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; box-shadow: 1px 1px 3px rgba(0,0,0,0.05);"><img src="data:image/png;base64,{encoded_string}" style="max-width: 100%; max-height: 100%; object-fit: contain;"></div></div>'
+            # 억지로 가두지 않고 원본 비율을 유지하며 테두리만 예쁘게 감쌉니다!
+            img_html += f'<div style="display: flex; justify-content: center; margin-top: 15px; margin-bottom: 15px;"><img src="data:image/png;base64,{encoded_string}" style="max-width: 100%; height: auto; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 1px 1px 3px rgba(0,0,0,0.1);"></div>'
         else:
             img_html += f'<div style="color: red; text-align: center; margin-top: 10px;">이미지 없음: {img_path}</div>'
     return img_html
@@ -70,11 +69,13 @@ def load_history():
         try:
             with open(history_file, 'r', encoding='utf-8') as f:
                 loaded = json.load(f)
-                if loaded: st.session_state.history = loaded
+                # 에러 원천 차단: 불러온 데이터가 반드시 딕셔너리일 때만 적용!
+                if loaded and isinstance(loaded, dict): 
+                    st.session_state.history = loaded
         except: pass
 
 def save_history(question_text, is_correct):
-    if getattr(st.session_state, 'history', None) is None: st.session_state.history = {}
+    if not isinstance(st.session_state.get('history'), dict): st.session_state.history = {}
     if question_text not in st.session_state.history:
         st.session_state.history[question_text] = {"correct": 0, "incorrect": 0}
     if is_correct: st.session_state.history[question_text]["correct"] += 1
@@ -302,15 +303,13 @@ elif st.session_state.page == 'quiz':
     
     # 상단 네비게이션 바
     c_prev, c_prog, c_mark, c_home = st.columns([1.5, 4.5, 2.5, 1.5])
-    
     with c_prev:
         if idx > 0:
             if st.button("◀ 이전", use_container_width=True):
                 st.session_state.index -= 1
                 st.session_state.show_answer = False
                 st.rerun()
-        else:
-            st.write("") 
+        else: st.write("") 
             
     with c_prog:
         prefix = "[오답]" if st.session_state.is_review_mode else "[⭐]" if st.session_state.is_bookmark_mode else "[모의]" if st.session_state.is_mock_exam else "[연습]"
@@ -321,7 +320,6 @@ elif st.session_state.page == 'quiz':
         bookmarked = is_bookmarked(q_text)
         btn_text = "🌟 저장됨" if bookmarked else "⭐ 저장"
         btn_type = "primary" if bookmarked else "secondary" 
-        
         if st.button(btn_text, type=btn_type, use_container_width=True):
             now_saved = toggle_bookmark(row)
             if now_saved: st.toast("⭐ 즐겨찾기에 추가되었습니다!")
@@ -333,6 +331,10 @@ elif st.session_state.page == 'quiz':
             st.session_state.page = 'selection'
             st.rerun()
     
+    # ⭐ 에러 원천 차단: history가 딕셔너리가 아닐 경우 강제 초기화!
+    if not isinstance(st.session_state.get('history'), dict):
+        st.session_state.history = {}
+        
     q_history = st.session_state.history.get(q_text, {"correct": 0, "incorrect": 0})
     total_attempts = q_history["correct"] + q_history["incorrect"]
     
@@ -349,7 +351,9 @@ elif st.session_state.page == 'quiz':
     st.divider()
     st.subheader(f"{q_text}")
     
-    # ⭐ [V24] 문제 보기와 이미지를 하나의 박스로 자연스럽게 통합!
+    # ==============================================================
+    # ⭐ [V25] 문제 보기 + 이미지 자연스러운 박스 통합 출력
+    # ==============================================================
     bogi_col = '보기' if '보기' in df.columns else '[보기]' if '[보기]' in df.columns else None
     bogi_text = ""
     if bogi_col and pd.notna(row.get(bogi_col)):
@@ -402,7 +406,9 @@ elif st.session_state.page == 'quiz':
     if st.session_state.show_answer:
         st.divider()
         
-        # ⭐ [V24] 해설 텍스트와 이미지를 하나의 박스로 자연스럽게 통합!
+        # ==============================================================
+        # ⭐ [V25] 해설 텍스트 + 이미지 자연스러운 박스 통합 출력
+        # ==============================================================
         ans_text = "" if pd.isna(row.get('해설')) else str(row['해설']).strip()
         ans_imgs_html = get_images_html(row.get('해설이미지'))
         
