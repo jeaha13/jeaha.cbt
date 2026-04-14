@@ -11,13 +11,13 @@ import base64
 # ==========================================
 # 1. 웹사이트 기본 설정
 # ==========================================
-st.set_page_config(page_title="산업안전기사 마스터 CBT", page_icon="🚧", layout="wide") # 넓은 화면(wide) 활용도 추천합니다만, centered 상태에서도 분할이 잘 적용됩니다.
+st.set_page_config(page_title="산업안전기사 마스터 CBT", page_icon="🚧", layout="centered")
 
 FILE_NAME = "산업안전기사_실기_문제은행.xlsx"
 STATS_FILE = "stats.json" 
 
 # ==========================================
-# ⚙️ 이미지 자연스러운 핏(Natural Fit) 도우미
+# ⚙️ [V26] 이미지 자연스러운 핏(Natural Fit) 도우미
 # ==========================================
 def get_images_html(img_names_raw):
     if pd.isna(img_names_raw): return ""
@@ -36,6 +36,9 @@ def get_images_html(img_names_raw):
             img_html += f'<div style="color: red; text-align: center; margin-top: 10px;">이미지 없음: {img_path}</div>'
     return img_html
 
+# ==========================================
+# ⚙️ 접속자 IP 및 통계 관리 도우미
+# ==========================================
 def get_client_ip():
     ip = "Guest"
     try:
@@ -136,11 +139,12 @@ def calculate_total_possible_score(df):
     for i in range(len(df)): total += get_question_point(df, i)
     return total
 
+# ⭐ [V26] 퀴즈 세션 초기화
 def init_quiz_state(df, is_mock, is_review, is_bookmark):
     st.session_state.df = df
     st.session_state.total_possible_score = calculate_total_possible_score(df)
     st.session_state.index = 0
-    st.session_state.user_answers = {}
+    st.session_state.user_answers = {} 
     st.session_state.show_answer = False
     st.session_state.is_mock_exam = is_mock
     st.session_state.is_review_mode = is_review
@@ -149,15 +153,21 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark):
     st.session_state.page = 'quiz'
 
 # ==========================================
-# ⭐ 세션 상태 초기화
+# ⭐ 세션 상태 초기화 및 설정값 저장 로직
 # ==========================================
 keys_to_init = [
     'page', 'df', 'index', 'total_possible_score', 'user_answers',
     'show_answer', 'start_time', 'is_review_mode', 'is_bookmark_mode', 
-    'is_mock_exam', 'has_visited', 'is_admin'
+    'is_mock_exam', 'has_visited', 'is_admin',
+    'config_shuffle', 'config_view_mode' # 설정 저장을 위한 키 추가
 ]
+
 for key in keys_to_init:
-    if key not in st.session_state: st.session_state[key] = None
+    if key not in st.session_state: 
+        # 설정 관련 키는 기본값 부여
+        if key == 'config_shuffle': st.session_state[key] = True
+        elif key == 'config_view_mode': st.session_state[key] = "🔽 드롭다운"
+        else: st.session_state[key] = None
 
 if st.session_state.is_admin is None: st.session_state.is_admin = False
 if 'nickname' not in st.session_state or st.session_state.nickname is None:
@@ -176,7 +186,7 @@ if not st.session_state.has_visited:
     st.session_state.has_visited = True
 
 # ==========================================
-# 👑 사이드바 및 대시보드 (OMR 기능 제외)
+# 👑 사이드바 및 대시보드
 # ==========================================
 with st.sidebar:
     st.caption("⚙️ 사이트 설정")
@@ -223,7 +233,7 @@ if st.session_state.page == 'admin_dashboard' and st.session_state.is_admin:
         st.rerun()
 
 # ==========================================
-# ⭐ 화면 1: 단원 선택 화면 
+# ⭐ 화면 1: 단원 선택 화면 (상태 유지 적용!)
 # ==========================================
 elif st.session_state.page == 'selection':
     st.markdown("<h1 style='text-align: center;'>🚧 산업안전기사 마스터 CBT</h1>", unsafe_allow_html=True)
@@ -234,8 +244,15 @@ elif st.session_state.page == 'selection':
         st.stop()
     xls = pd.ExcelFile(FILE_NAME)
     sheet_names = xls.sheet_names
-    is_shuffle = st.checkbox("🔀 문제 순서 랜덤하게 섞기", value=True)
-    view_mode = st.radio("보기 방식", ["🔽 드롭다운", "🔠 펼쳐보기"], horizontal=True, label_visibility="collapsed")
+    
+    # 💡 체크박스와 라디오 버튼이 session_state의 값을 기억하도록 연결
+    is_shuffle = st.checkbox("🔀 문제 순서 랜덤하게 섞기", value=st.session_state.config_shuffle)
+    st.session_state.config_shuffle = is_shuffle # 사용자가 누를 때마다 상태 저장
+    
+    view_options = ["🔽 드롭다운", "🔠 펼쳐보기"]
+    current_mode_idx = view_options.index(st.session_state.config_view_mode)
+    view_mode = st.radio("보기 방식", view_options, index=current_mode_idx, horizontal=True, label_visibility="collapsed")
+    st.session_state.config_view_mode = view_mode # 사용자가 누를 때마다 상태 저장
     
     def start_new_quiz(target_sheet):
         df = pd.read_excel(FILE_NAME, sheet_name=target_sheet)
@@ -283,7 +300,7 @@ elif st.session_state.page == 'selection':
                 st.rerun()
 
 # ==========================================
-# 화면 2: 퀴즈 화면 (메인 영역 / 우측 OMR 분할)
+# 화면 2: 퀴즈 화면 
 # ==========================================
 elif st.session_state.page == 'quiz':
     # 줄바꿈 방지를 위한 CSS (버튼 안의 글씨가 넉넉하게 펴지게 함)
@@ -306,13 +323,14 @@ elif st.session_state.page == 'quiz':
     q_text = row['문제']
     point = get_question_point(df, idx)
     
-    # ⭐ [수정] 화면을 문제 영역(7.5)과 OMR 영역(2.5)으로 나눔
+    # ⭐ 메인(문제) 영역과 우측(OMR) 영역 분할
     col_main, col_nav = st.columns([7.5, 2.5], gap="large")
-    
+
     # ----------------------------------------
-    # [왼쪽 영역] : 문제 출력 
+    # [왼쪽] 메인 문제 풀이 영역
     # ----------------------------------------
     with col_main:
+        # 상단 네비게이션 바
         c_prev, c_prog, c_mark, c_home = st.columns([1.5, 4.5, 2.5, 1.5])
         with c_prev:
             if idx > 0:
@@ -381,6 +399,7 @@ elif st.session_state.page == 'quiz':
         st.write("")
         is_mcq = '객관식보기' in df.columns and pd.notna(row.get('객관식보기'))
 
+        # ⭐ [V26] 점수 뻥튀기 방지
         def go_next(is_correct):
             save_history(q_text, is_correct)
             st.session_state.user_answers[st.session_state.index] = is_correct 
@@ -431,13 +450,13 @@ elif st.session_state.page == 'quiz':
                 if st.button("❌ 틀렸음", use_container_width=True): go_next(False)
 
     # ----------------------------------------
-    # ⭐ [오른쪽 영역] : OMR 내비게이터 
+    # [오른쪽] OMR 내비게이터 영역 (가로 유지)
     # ----------------------------------------
     with col_nav:
         st.markdown("<h4 style='text-align: center; color: #2c3e50;'>📋 OMR 내비게이터</h4>", unsafe_allow_html=True)
         st.write("")
         
-        # 4칸씩 그리드로 버튼 나열하여 글자가 안 깨지게 너비 확보
+        # 4칸씩 그리드로 나열
         nav_cols = st.columns(4)
         for i in range(total_q):
             is_answered = i in st.session_state.user_answers
@@ -465,6 +484,7 @@ elif st.session_state.page == 'result':
     st.balloons()
     mins, secs = divmod(int(time.time() - st.session_state.start_time), 60)
     
+    # ⭐ [V26] 기록된 user_answers를 바탕으로 정확한 점수 계산!
     correct = sum(1 for v in st.session_state.user_answers.values() if v)
     incorrect = sum(1 for v in st.session_state.user_answers.values() if not v)
     total_q = len(st.session_state.df)
@@ -483,7 +503,7 @@ elif st.session_state.page == 'result':
             if st.button(f"🔁 남은 오답 다시 풀기", use_container_width=True, type="primary"):
                 df_left = pd.read_excel(note_filename)
                 df_left.columns = df_left.columns.str.replace(' ', '')
-                df_left = df_left.sample(frac=1).reset_index(drop=True) 
+                if st.session_state.config_shuffle: df_left = df_left.sample(frac=1).reset_index(drop=True) 
                 init_quiz_state(df_left, False, True, False)
                 st.rerun()
                 
@@ -527,7 +547,7 @@ elif st.session_state.page == 'result':
                 if os.path.exists(mark_filename):
                     df_left = pd.read_excel(mark_filename)
                     df_left.columns = df_left.columns.str.replace(' ', '')
-                    df_left = df_left.sample(frac=1).reset_index(drop=True)
+                    if st.session_state.config_shuffle: df_left = df_left.sample(frac=1).reset_index(drop=True)
                     init_quiz_state(df_left, False, False, True)
                     st.rerun()
 
