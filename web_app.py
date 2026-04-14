@@ -11,14 +11,13 @@ import base64
 # ==========================================
 # 1. 웹사이트 기본 설정
 # ==========================================
-# 화면 레이아웃을 다시 중앙(centered)으로 맞췄습니다.
 st.set_page_config(page_title="산업안전기사 마스터 CBT", page_icon="🚧", layout="centered")
 
 FILE_NAME = "산업안전기사_실기_문제은행.xlsx"
 STATS_FILE = "stats.json" 
 
 # ==========================================
-# ⚙️ 이미지 자연스러운 핏(Natural Fit) 도우미
+# ⚙️ [V26] 이미지 자연스러운 핏(Natural Fit) 도우미
 # ==========================================
 def get_images_html(img_names_raw):
     if pd.isna(img_names_raw): return ""
@@ -37,6 +36,9 @@ def get_images_html(img_names_raw):
             img_html += f'<div style="color: red; text-align: center; margin-top: 10px;">이미지 없음: {img_path}</div>'
     return img_html
 
+# ==========================================
+# ⚙️ 접속자 IP 및 통계 관리 도우미
+# ==========================================
 def get_client_ip():
     ip = "Guest"
     try:
@@ -141,7 +143,7 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark):
     st.session_state.df = df
     st.session_state.total_possible_score = calculate_total_possible_score(df)
     st.session_state.index = 0
-    st.session_state.user_answers = {}
+    st.session_state.user_answers = {} 
     st.session_state.show_answer = False
     st.session_state.is_mock_exam = is_mock
     st.session_state.is_review_mode = is_review
@@ -150,7 +152,7 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark):
     st.session_state.page = 'quiz'
 
 # ==========================================
-# ⭐ 세션 상태 초기화 및 설정값 저장 로직
+# ⭐ 세션 상태 초기화 
 # ==========================================
 keys_to_init = [
     'page', 'df', 'index', 'total_possible_score', 'user_answers',
@@ -229,7 +231,7 @@ if st.session_state.page == 'admin_dashboard' and st.session_state.is_admin:
         st.rerun()
 
 # ==========================================
-# ⭐ 화면 1: 단원 선택 화면 (상태 유지 적용)
+# ⭐ 화면 1: 단원 선택 화면 
 # ==========================================
 elif st.session_state.page == 'selection':
     st.markdown("<h1 style='text-align: center;'>🚧 산업안전기사 마스터 CBT</h1>", unsafe_allow_html=True)
@@ -298,7 +300,7 @@ elif st.session_state.page == 'selection':
 # 화면 2: 퀴즈 화면 
 # ==========================================
 elif st.session_state.page == 'quiz':
-    # 버튼 안의 텍스트가 줄바꿈되지 않도록 강제 (10, 11 등)
+    # 버튼 텍스트 줄바꿈 방지 CSS (숫자와 체크표시가 삐져나가지 않도록)
     st.markdown("""
         <style>
         div[data-testid="stVerticalBlock"] button p {
@@ -329,9 +331,12 @@ elif st.session_state.page == 'quiz':
         else: st.write("") 
             
     with c_prog:
+        # ⭐ 게이지 바 로직 수정: 실제로 '푼 문제(user_answers에 기록된 수)' 기준!
+        solved_count = len(st.session_state.user_answers)
         prefix = "[오답]" if st.session_state.is_review_mode else "[⭐]" if st.session_state.is_bookmark_mode else "[모의]" if st.session_state.is_mock_exam else "[연습]"
-        st.progress((idx) / total_q)
-        st.caption(f"{prefix} {idx + 1}/{total_q} ({point}점)")
+        
+        st.progress(solved_count / total_q if total_q > 0 else 0)
+        st.caption(f"{prefix} 푼 문제: {solved_count}/{total_q} (현재 {idx + 1}번 ┃ {point}점)")
         
     with c_mark:
         bookmarked = is_bookmarked(q_text)
@@ -371,7 +376,7 @@ elif st.session_state.page == 'quiz':
     c_omr, c_sub = st.columns([8, 2], gap="small")
     
     with c_omr:
-        # 한 줄에 최대 10개씩 배치 (공간 부족 방지)
+        # 한 줄에 최대 10개씩 배치
         cols_per_row = 10 if total_q >= 10 else total_q
         if cols_per_row == 0: cols_per_row = 1
         
@@ -382,8 +387,9 @@ elif st.session_state.page == 'quiz':
                 if q_idx < total_q:
                     is_answered = q_idx in st.session_state.user_answers
                     is_current = (q_idx == st.session_state.index)
-                    # 이미 푼 문제는 ✅ 표시
-                    btn_text = f"✅{q_idx+1}" if is_answered else f"{q_idx+1}"
+                    
+                    # ⭐ 삐져나감 방지 및 상태 표시 기호 변경 (✅ 대신 깔끔한 ✔ 사용)
+                    btn_text = f"{q_idx+1}✔" if is_answered else f"{q_idx+1}"
                     btn_type = "primary" if is_current else "secondary"
                     with row_cols[i]:
                         if st.button(btn_text, key=f"nav_btn_{q_idx}", type=btn_type, use_container_width=True):
