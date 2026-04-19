@@ -7,18 +7,18 @@ import zipfile
 import io
 import glob
 import base64
-import datetime # ⭐ 방명록 시간을 위한 도구 추가!
+import datetime
 
 # ==========================================
 # 1. 웹사이트 기본 설정
 # ==========================================
 st.set_page_config(page_title="산업안전기사 마스터 CBT", page_icon="🚧", layout="centered")
 
-# ⭐ [V28] 파일 분리 (필답형 vs 작업형)
+# ⭐ 파일 분리 (필답형 vs 작업형)
 FILE_PILDAP = "산업안전기사_실기_문제은행.xlsx"
-FILE_JAKUP = "산업안전기사_작업형_문제은행.xlsx"
+FILE_JAKUP = "산업안전기사_작업형_문제은행.xlsx"  # 우리가 만든 엑셀 파일 이름으로 변경해서 쓰셔도 됩니다.
 STATS_FILE = "stats.json" 
-GUESTBOOK_FILE = "guestbook.json" # ⭐ 방명록 저장 파일
+GUESTBOOK_FILE = "guestbook.json"
 
 # ==========================================
 # ⚙️ 이미지 자연스러운 핏(Natural Fit) 도우미
@@ -110,7 +110,8 @@ def remove_from_incorrect_note(question_text):
     if os.path.exists(note_filename):
         df_old = pd.read_excel(note_filename)
         df_new = df_old[df_old['문제'] != question_text]
-        if df_new.empty: os.remove(note_filename) if os.path.exists(note_filename) else None
+        if df_new.empty: 
+            if os.path.exists(note_filename): os.remove(note_filename)
         else: df_new.to_excel(note_filename, index=False)
 
 def is_bookmarked(question_text):
@@ -129,7 +130,8 @@ def toggle_bookmark(row):
         df_old = pd.read_excel(mark_filename)
         if q_text in df_old['문제'].values:
             df_new = df_old[df_old['문제'] != q_text]
-            if df_new.empty: os.remove(mark_filename) if os.path.exists(mark_filename) else None
+            if df_new.empty: 
+                if os.path.exists(mark_filename): os.remove(mark_filename)
             else: df_new.to_excel(mark_filename, index=False)
             return False 
         else:
@@ -237,7 +239,6 @@ if st.session_state.page == 'admin_dashboard' and st.session_state.is_admin:
             zf.extractall()
         st.success("✅ 완벽하게 복구되었습니다! F5를 눌러주세요.")
         
-    # ⭐ [V28] 관리자 전용 방명록 청소 기능
     st.write("---")
     st.subheader("💬 방명록 관리")
     if st.button("🗑️ 방명록 전체 싹 지우기", type="secondary"):
@@ -250,14 +251,13 @@ if st.session_state.page == 'admin_dashboard' and st.session_state.is_admin:
         st.rerun()
 
 # ==========================================
-# ⭐ 화면 1: 단원 선택 화면 (필답/작업형 분리 + 방명록)
+# ⭐ 화면 1: 단원 선택 화면
 # ==========================================
 elif st.session_state.page == 'selection':
     st.markdown("<h1 style='text-align: center;'>🚧 산업안전기사 마스터 CBT</h1>", unsafe_allow_html=True)
     if st.session_state.is_admin: st.info("👑 현재 관리자 권한으로 접속 중입니다.")
     else: st.caption(f"접속 기기 IP: {st.session_state.nickname}")
     
-    # ⭐ [V28] 필답형 / 작업형 선택 라디오 버튼
     st.write("")
     exam_type = st.radio("시험 유형 선택", ["✍️ 필답형 (주관식/서술)", "💻 작업형 (동영상/도면)"], horizontal=True)
     
@@ -319,19 +319,14 @@ elif st.session_state.page == 'selection':
                 init_quiz_state(df, False, False, True)
                 st.rerun()
 
-    # ==============================================================
-    # ⭐ [V28] 방명록 (Guestbook) 기능 탑재!
-    # ==============================================================
+    # 방명록
     st.write("---")
     with st.expander("💬 방문자 방명록 (건의사항이나 응원을 남겨주세요!)", expanded=False):
         entries = load_guestbook()
-        
-        # 최근 15개 메시지만 깔끔하게 보여줍니다.
         if not entries:
             st.info("아직 등록된 방명록이 없습니다. 첫 번째 글을 남겨보세요! 🎉")
         else:
             for entry in reversed(entries[-15:]): 
-                # 펭귄주인장 글은 노란색 테두리로 특별하게 강조!
                 is_owner = "👑" in entry['name']
                 border_color = "#f1c40f" if is_owner else "#e0e0e0"
                 bg_color = "#fffbf0" if is_owner else "#f9f9f9"
@@ -347,10 +342,8 @@ elif st.session_state.page == 'selection':
         new_msg = st.text_input("방명록 작성", placeholder="여기에 글을 입력하세요...", label_visibility="collapsed")
         if st.button("✏️ 방명록 남기기", use_container_width=True):
             if new_msg.strip():
-                # 글쓴이 이름 (관리자면 👑 마크, 일반 유저면 IP 앞자리)
                 writer_name = "👑 펭귄주인장" if st.session_state.is_admin else f"익명 ({st.session_state.nickname[:7]}...)"
                 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                
                 entries.append({"name": writer_name, "msg": new_msg.strip(), "time": now_str})
                 save_guestbook(entries)
                 st.toast("✅ 방명록이 성공적으로 등록되었습니다!")
@@ -360,7 +353,7 @@ elif st.session_state.page == 'selection':
                 st.warning("글 내용을 입력해 주세요!")
 
 # ==========================================
-# 화면 2: 퀴즈 화면
+# ⭐ 화면 2: 퀴즈 화면 (엑셀 신규 컬럼 반영)
 # ==========================================
 elif st.session_state.page == 'quiz':
     df = st.session_state.df
@@ -404,7 +397,6 @@ elif st.session_state.page == 'quiz':
             st.session_state.page = 'selection'
             st.rerun()
             
-    prefix = "[오답]" if st.session_state.is_review_mode else "[⭐]" if st.session_state.is_bookmark_mode else "[모의]" if st.session_state.is_mock_exam else "[연습]"
     st.progress((idx) / total_q)
     
     with st.expander(f"🗺️ 전체 문제 현황판 ({idx+1}/{total_q}) - 클릭해서 펼치기"):
@@ -426,22 +418,41 @@ elif st.session_state.page == 'quiz':
     q_history = st.session_state.history.get(q_text, {"correct": 0, "incorrect": 0})
     total_attempts = q_history["correct"] + q_history["incorrect"]
     
-    source_name = row.get('출처', '')
-    source_str = f"🏷️ 출처: {str(source_name).strip()} ┃ " if pd.notna(source_name) and str(source_name).strip() != '' else ""
+    # ⭐ [업데이트] 참고 및 출제빈도 메타데이터 추가 반영
+    source_name = row.get('참고') if '참고' in df.columns and pd.notna(row.get('참고')) else row.get('출처', '')
+    freq = row.get('출제빈도', '')
+    
+    source_str = f"🏷️ 출처: {str(source_name).strip()} " if pd.notna(source_name) and str(source_name).strip() != '' else ""
+    freq_str = f"┃ ⭐ 빈도: {str(freq).strip()} " if pd.notna(freq) and str(freq).strip() != '' else ""
 
-    if total_attempts > 0: st.caption(f"{source_str}📊 이력: 맞음 {q_history['correct']} / 틀림 {q_history['incorrect']}")
-    else: st.caption(f"{source_str}✨ 처음 푸는 문제입니다!")
+    if total_attempts > 0: st.caption(f"{source_str}{freq_str}┃ 📊 이력: 맞음 {q_history['correct']} / 틀림 {q_history['incorrect']}")
+    else: st.caption(f"{source_str}{freq_str}┃ ✨ 처음 푸는 문제입니다!")
             
     st.divider()
-    st.subheader(f"{q_text}")
     
+    # ⭐ [업데이트] 분류(실습형/작업형) 뱃지 렌더링
+    category = row.get('분류', '')
+    cat_badge = f"<span style='color: #8e44ad;'>[{str(category).strip()}]</span> " if pd.notna(category) and str(category).strip() != '' else ""
+    st.markdown(f"### {cat_badge}{q_text}", unsafe_allow_html=True)
+    
+    # 보기, 그림설명, 이미지 조합
     bogi_col = '보기' if '보기' in df.columns else '[보기]' if '[보기]' in df.columns else None
     bogi_text = str(row[bogi_col]).strip() if bogi_col and pd.notna(row.get(bogi_col)) else ""
     if bogi_text.lower() == 'nan': bogi_text = ""
-    q_imgs_html = get_images_html(row.get('문제이미지'))
+    
+    # ⭐ [업데이트] 화면/그림설명 추가
+    desc_col = '그림설명' if '그림설명' in df.columns else None
+    desc_text = str(row[desc_col]).strip() if desc_col and pd.notna(row.get(desc_col)) else ""
+    if desc_text.lower() == 'nan': desc_text = ""
+    
+    # ⭐ [업데이트] 이미지 경로 가져오기 ('그림 및 동영상' 열 우선 체크)
+    img_col = '그림및동영상' if '그림및동영상' in df.columns else '문제이미지'
+    q_imgs_html = get_images_html(row.get(img_col))
 
-    if bogi_text or q_imgs_html:
+    # 위 3가지 중 하나라도 있으면 박스 생성
+    if bogi_text or q_imgs_html or desc_text:
         combined_q_html = f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;">'
+        if desc_text: combined_q_html += f'<div style="color: #2980b9; font-weight: bold; margin-bottom: 12px; background-color: #eaf2f8; padding: 10px; border-radius: 5px;">🎬 화면 설명: {desc_text}</div>'
         if bogi_text: combined_q_html += f'<strong>[보기]</strong><br><br><div style="white-space: pre-wrap;">{bogi_text}</div>'
         if q_imgs_html: combined_q_html += q_imgs_html
         combined_q_html += '</div><br>'
@@ -478,6 +489,12 @@ elif st.session_state.page == 'quiz':
     if st.session_state.show_answer:
         st.divider()
         ans_text = "" if pd.isna(row.get('해설')) else str(row['해설']).strip()
+        
+        # 정답 출력 부분 (엑셀에 '정답' 컬럼이 있는 경우 최우선으로 보여줌)
+        real_ans = "" if pd.isna(row.get('정답')) else str(row['정답']).strip()
+        if real_ans and not is_mcq: 
+            ans_text = f"**[정답]**\n{real_ans}\n\n" + ans_text
+            
         ans_imgs_html = get_images_html(row.get('해설이미지'))
         
         combined_a_html = f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;"><strong>[정답 및 해설]</strong><br><br>'
