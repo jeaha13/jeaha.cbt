@@ -14,15 +14,28 @@ import datetime
 # ==========================================
 st.set_page_config(page_title="산업안전기사 마스터 CBT", page_icon="🚧", layout="centered")
 
-# ⭐ 파일 분리 (필답형 vs 작업형)
 FILE_PILDAP = "산업안전기사_실기_문제은행.xlsx"
-FILE_JAKUP = "산업안전기사_작업형_문제은행.xlsx"  # 우리가 만든 엑셀 파일 이름으로 변경해서 쓰셔도 됩니다.
+FILE_JAKUP = "산업안전기사_작업형_문제은행.xlsx"
 STATS_FILE = "stats.json" 
 GUESTBOOK_FILE = "guestbook.json"
 
 # ==========================================
-# ⚙️ 이미지 자연스러운 핏(Natural Fit) 도우미
+# ⚙️ [V29 핵심] 스마트 레이더: 폴더 상관없이 이미지 찾기!
 # ==========================================
+def find_image_path(filename):
+    """깃허브(서버) 내의 모든 폴더를 뒤져서 해당 사진의 정확한 주소를 찾아냅니다."""
+    # 자주 쓰는 폴더부터 먼저 빠르게 검사
+    for folder in ["사진폴더", "실습형사진폴더"]:
+        if os.path.exists(folder):
+            for root, _, files in os.walk(folder):
+                if filename in files: return os.path.join(root, filename)
+    
+    # 그래도 없으면 전체 뒤지기
+    for root, _, files in os.walk("."):
+        if ".git" in root or "venv" in root: continue
+        if filename in files: return os.path.join(root, filename)
+    return None
+
 def get_images_html(img_names_raw):
     if pd.isna(img_names_raw): return ""
     img_names_raw = str(img_names_raw).strip()
@@ -31,13 +44,13 @@ def get_images_html(img_names_raw):
     img_html = ""
     img_names = [name.strip() for name in img_names_raw.replace(';', ',').split(',') if name.strip()]
     for img_name in img_names:
-        img_path = os.path.join("사진폴더", img_name)
-        if os.path.exists(img_path):
+        img_path = find_image_path(img_name) # 스마트 레이더 작동!
+        if img_path:
             with open(img_path, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read()).decode()
             img_html += f'<div style="display: flex; justify-content: center; margin-top: 15px; margin-bottom: 15px;"><img src="data:image/png;base64,{encoded_string}" style="max-width: 100%; height: auto; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 1px 1px 3px rgba(0,0,0,0.1);"></div>'
         else:
-            img_html += f'<div style="color: red; text-align: center; margin-top: 10px;">이미지 없음: {img_path}</div>'
+            img_html += f'<div style="color: red; text-align: center; margin-top: 10px; font-weight: bold;">🚨 이미지 없음: {img_name}<br><span style="font-size:12px;">(폴더에 사진을 업로드해주세요)</span></div>'
     return img_html
 
 # ==========================================
@@ -82,8 +95,7 @@ def load_history():
         try:
             with open(history_file, 'r', encoding='utf-8') as f:
                 loaded = json.load(f)
-                if loaded and isinstance(loaded, dict): 
-                    st.session_state.history = loaded
+                if loaded and isinstance(loaded, dict): st.session_state.history = loaded
         except: pass
 
 def save_history(question_text, is_correct):
@@ -110,8 +122,7 @@ def remove_from_incorrect_note(question_text):
     if os.path.exists(note_filename):
         df_old = pd.read_excel(note_filename)
         df_new = df_old[df_old['문제'] != question_text]
-        if df_new.empty: 
-            if os.path.exists(note_filename): os.remove(note_filename)
+        if df_new.empty: os.remove(note_filename) if os.path.exists(note_filename) else None
         else: df_new.to_excel(note_filename, index=False)
 
 def is_bookmarked(question_text):
@@ -130,8 +141,7 @@ def toggle_bookmark(row):
         df_old = pd.read_excel(mark_filename)
         if q_text in df_old['문제'].values:
             df_new = df_old[df_old['문제'] != q_text]
-            if df_new.empty: 
-                if os.path.exists(mark_filename): os.remove(mark_filename)
+            if df_new.empty: os.remove(mark_filename) if os.path.exists(mark_filename) else None
             else: df_new.to_excel(mark_filename, index=False)
             return False 
         else:
@@ -251,7 +261,7 @@ if st.session_state.page == 'admin_dashboard' and st.session_state.is_admin:
         st.rerun()
 
 # ==========================================
-# ⭐ 화면 1: 단원 선택 화면
+# ⭐ 화면 1: 단원 선택 화면 
 # ==========================================
 elif st.session_state.page == 'selection':
     st.markdown("<h1 style='text-align: center;'>🚧 산업안전기사 마스터 CBT</h1>", unsafe_allow_html=True)
@@ -260,7 +270,6 @@ elif st.session_state.page == 'selection':
     
     st.write("")
     exam_type = st.radio("시험 유형 선택", ["✍️ 필답형 (주관식/서술)", "💻 작업형 (동영상/도면)"], horizontal=True)
-    
     target_file = FILE_PILDAP if "필답형" in exam_type else FILE_JAKUP
     
     if not os.path.exists(target_file):
@@ -319,7 +328,6 @@ elif st.session_state.page == 'selection':
                 init_quiz_state(df, False, False, True)
                 st.rerun()
 
-    # 방명록
     st.write("---")
     with st.expander("💬 방문자 방명록 (건의사항이나 응원을 남겨주세요!)", expanded=False):
         entries = load_guestbook()
@@ -353,7 +361,7 @@ elif st.session_state.page == 'selection':
                 st.warning("글 내용을 입력해 주세요!")
 
 # ==========================================
-# ⭐ 화면 2: 퀴즈 화면 (엑셀 신규 컬럼 반영)
+# 화면 2: 퀴즈 화면 
 # ==========================================
 elif st.session_state.page == 'quiz':
     df = st.session_state.df
@@ -397,6 +405,7 @@ elif st.session_state.page == 'quiz':
             st.session_state.page = 'selection'
             st.rerun()
             
+    prefix = "[오답]" if st.session_state.is_review_mode else "[⭐]" if st.session_state.is_bookmark_mode else "[모의]" if st.session_state.is_mock_exam else "[연습]"
     st.progress((idx) / total_q)
     
     with st.expander(f"🗺️ 전체 문제 현황판 ({idx+1}/{total_q}) - 클릭해서 펼치기"):
@@ -418,43 +427,47 @@ elif st.session_state.page == 'quiz':
     q_history = st.session_state.history.get(q_text, {"correct": 0, "incorrect": 0})
     total_attempts = q_history["correct"] + q_history["incorrect"]
     
-    # ⭐ [업데이트] 참고 및 출제빈도 메타데이터 추가 반영
-    source_name = row.get('참고') if '참고' in df.columns and pd.notna(row.get('참고')) else row.get('출처', '')
-    freq = row.get('출제빈도', '')
-    
-    source_str = f"🏷️ 출처: {str(source_name).strip()} " if pd.notna(source_name) and str(source_name).strip() != '' else ""
-    freq_str = f"┃ ⭐ 빈도: {str(freq).strip()} " if pd.notna(freq) and str(freq).strip() != '' else ""
+    source_name = row.get('출처', '')
+    source_str = f"🏷️ 출처: {str(source_name).strip()} ┃ " if pd.notna(source_name) and str(source_name).strip() != '' else ""
 
-    if total_attempts > 0: st.caption(f"{source_str}{freq_str}┃ 📊 이력: 맞음 {q_history['correct']} / 틀림 {q_history['incorrect']}")
-    else: st.caption(f"{source_str}{freq_str}┃ ✨ 처음 푸는 문제입니다!")
+    if total_attempts > 0: st.caption(f"{source_str}📊 이력: 맞음 {q_history['correct']} / 틀림 {q_history['incorrect']}")
+    else: st.caption(f"{source_str}✨ 처음 푸는 문제입니다!")
             
     st.divider()
+    st.subheader(f"{q_text}")
     
-    # ⭐ [업데이트] 분류(실습형/작업형) 뱃지 렌더링
-    category = row.get('분류', '')
-    cat_badge = f"<span style='color: #8e44ad;'>[{str(category).strip()}]</span> " if pd.notna(category) and str(category).strip() != '' else ""
-    st.markdown(f"### {cat_badge}{q_text}", unsafe_allow_html=True)
+    # ==============================================================
+    # ⭐ [V29] 엑셀 기둥 이름 자동 인식 (작업형 호환!)
+    # ==============================================================
     
-    # 보기, 그림설명, 이미지 조합
-    bogi_col = '보기' if '보기' in df.columns else '[보기]' if '[보기]' in df.columns else None
+    # 1. 보기 인식
+    bogi_col = next((c for c in ['보기', '[보기]'] if c in df.columns), None)
     bogi_text = str(row[bogi_col]).strip() if bogi_col and pd.notna(row.get(bogi_col)) else ""
     if bogi_text.lower() == 'nan': bogi_text = ""
-    
-    # ⭐ [업데이트] 화면/그림설명 추가
-    desc_col = '그림설명' if '그림설명' in df.columns else None
+
+    # 2. 그림설명 (화면설명) 인식 -> 작업형의 핵심!
+    desc_col = next((c for c in ['그림설명', '화면설명', '동영상설명'] if c in df.columns), None)
     desc_text = str(row[desc_col]).strip() if desc_col and pd.notna(row.get(desc_col)) else ""
     if desc_text.lower() == 'nan': desc_text = ""
-    
-    # ⭐ [업데이트] 이미지 경로 가져오기 ('그림 및 동영상' 열 우선 체크)
-    img_col = '그림및동영상' if '그림및동영상' in df.columns else '문제이미지'
-    q_imgs_html = get_images_html(row.get(img_col))
 
-    # 위 3가지 중 하나라도 있으면 박스 생성
-    if bogi_text or q_imgs_html or desc_text:
+    # 3. 문제 이미지 인식 (그림및동영상 등 다양한 이름 호환)
+    img_col = next((c for c in ['문제이미지', '그림및동영상', '사진', '그림'] if c in df.columns), None)
+    q_imgs_html = get_images_html(row.get(img_col)) if img_col else ""
+
+    # 박스 안에 하나로 예쁘게 합치기
+    if bogi_text or desc_text or q_imgs_html:
         combined_q_html = f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;">'
-        if desc_text: combined_q_html += f'<div style="color: #2980b9; font-weight: bold; margin-bottom: 12px; background-color: #eaf2f8; padding: 10px; border-radius: 5px;">🎬 화면 설명: {desc_text}</div>'
-        if bogi_text: combined_q_html += f'<strong>[보기]</strong><br><br><div style="white-space: pre-wrap;">{bogi_text}</div>'
-        if q_imgs_html: combined_q_html += q_imgs_html
+        
+        # 화면설명이 있으면 예쁜 파란색 박스로 강조
+        if desc_text:
+            combined_q_html += f'<div style="background-color: #eaf2f8; padding: 12px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #3498db;">🎬 <strong>[화면 설명]</strong><br>{desc_text}</div>'
+            
+        if bogi_text:
+            combined_q_html += f'<strong>[보기]</strong><br><br><div style="white-space: pre-wrap;">{bogi_text}</div>'
+            
+        if q_imgs_html:
+            combined_q_html += q_imgs_html
+            
         combined_q_html += '</div><br>'
         st.markdown(combined_q_html, unsafe_allow_html=True)
                 
@@ -490,12 +503,9 @@ elif st.session_state.page == 'quiz':
         st.divider()
         ans_text = "" if pd.isna(row.get('해설')) else str(row['해설']).strip()
         
-        # 정답 출력 부분 (엑셀에 '정답' 컬럼이 있는 경우 최우선으로 보여줌)
-        real_ans = "" if pd.isna(row.get('정답')) else str(row['정답']).strip()
-        if real_ans and not is_mcq: 
-            ans_text = f"**[정답]**\n{real_ans}\n\n" + ans_text
-            
-        ans_imgs_html = get_images_html(row.get('해설이미지'))
+        # 해설 이미지도 다양한 기둥 이름 호환
+        ans_img_col = next((c for c in ['해설이미지', '해설사진'] if c in df.columns), None)
+        ans_imgs_html = get_images_html(row.get(ans_img_col)) if ans_img_col else ""
         
         combined_a_html = f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;"><strong>[정답 및 해설]</strong><br><br>'
         if ans_text: combined_a_html += f'<div style="white-space: pre-wrap;">{ans_text}</div>'
