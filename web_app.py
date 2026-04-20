@@ -20,6 +20,34 @@ STATS_FILE = "stats.json"
 GUESTBOOK_FILE = "guestbook.json"
 
 # ==========================================
+# ⚙️ [V33 핵심] 마우스 올리면 확 커지는 돋보기 CSS 주입!
+# ==========================================
+st.markdown("""
+<style>
+    .cbt-img-box {
+        width: 100%;
+        text-align: center;
+        margin: 15px 0;
+    }
+    .cbt-img-box img {
+        width: 100%; 
+        height: auto;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
+        transition: transform 0.3s ease; /* 부드러운 확대 애니메이션 */
+        cursor: zoom-in; /* 돋보기 마우스 커서 */
+    }
+    .cbt-img-box img:hover, .cbt-img-box img:active {
+        transform: scale(1.6); /* 마우스를 올리거나 터치하면 1.6배 튀어나옴! */
+        z-index: 9999;
+        position: relative;
+        box-shadow: 0px 15px 30px rgba(0,0,0,0.3);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ==========================================
 # ⚙️ 스마트 레이더: 폴더 상관없이 이미지 찾기!
 # ==========================================
 def find_image_path(filename):
@@ -44,8 +72,8 @@ def get_images_html(img_names_raw):
         if img_path:
             with open(img_path, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read()).decode()
-            # ⭐ [V32 핵심 해결] 이미지를 감싸는 상자(div)의 족쇄를 풀고 width: 100% 강제 부여!
-            img_html += f'<div style="width: 100%; margin-top: 15px; margin-bottom: 15px;"><img src="data:image/png;base64,{encoded_string}" style="width: 100%; height: auto; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 1px 1px 3px rgba(0,0,0,0.1);"></div>'
+            # V33 돋보기 클래스 적용
+            img_html += f'<div class="cbt-img-box"><img src="data:image/png;base64,{encoded_string}"></div>'
         else:
             img_html += f'<div style="color: red; text-align: center; margin-top: 10px; font-weight: bold;">🚨 이미지 없음: {img_name}</div>'
     return img_html
@@ -382,7 +410,6 @@ elif st.session_state.page == 'quiz':
     st.divider()
     st.subheader(f"{q_text}")
     
-    # '참고', '보기', '[보기]' 통합
     bogi_col = next((c for c in ['참고', '보기', '[보기]'] if c in df.columns), None)
     bogi_text = str(row[bogi_col]).strip() if bogi_col and pd.notna(row.get(bogi_col)) else ""
     if bogi_text.lower() == 'nan': bogi_text = ""
