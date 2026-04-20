@@ -20,28 +20,25 @@ STATS_FILE = "stats.json"
 GUESTBOOK_FILE = "guestbook.json"
 
 # ==========================================
-# ⚙️ [V35 핵심] 완벽한 이미지 핏 (object-fit: cover) 적용!
+# ⚙️ 완벽한 이미지 핏 (object-fit: cover)
 # ==========================================
 st.markdown("""
 <style>
-    /* 이미지를 담는 상자: 가로 100%, 세로는 400px 고정 (필요에 따라 조절 가능) */
     .cbt-img-box {
         width: 100%;
-        height: 400px; /* 세로 높이를 고정하여 모든 사진의 박스 크기를 통일합니다. */
+        height: 400px; 
         margin: 15px 0;
         border: 1px solid #e0e0e0;
         border-radius: 8px;
-        overflow: hidden; /* 박스를 넘어가는 이미지는 숨김 처리 */
+        overflow: hidden; 
         box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
         background-color: white;
     }
-    
-    /* 실제 이미지: 상자에 꽉 차게! */
     .cbt-img-box img {
         width: 100%;
         height: 100%;
-        object-fit: cover; /* 핵심 마법! 비율을 유지하며 상자를 꽉 채웁니다. */
-        object-position: center; /* 이미지의 중심이 잘리지 않도록 중앙 정렬 */
+        object-fit: cover; 
+        object-position: center; 
     }
 </style>
 """, unsafe_allow_html=True)
@@ -71,7 +68,6 @@ def get_images_html(img_names_raw):
         if img_path:
             with open(img_path, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read()).decode()
-            # V35 클래스 적용!
             img_html += f'<div class="cbt-img-box"><img src="data:image/png;base64,{encoded_string}"></div>'
         else:
             img_html += f'<div style="color: red; text-align: center; margin-top: 10px; font-weight: bold;">🚨 이미지 없음: {img_name}</div>'
@@ -409,9 +405,22 @@ elif st.session_state.page == 'quiz':
     st.divider()
     st.subheader(f"{q_text}")
     
-    bogi_col = next((c for c in ['참고', '보기', '[보기]'] if c in df.columns), None)
-    bogi_text = str(row[bogi_col]).strip() if bogi_col and pd.notna(row.get(bogi_col)) else ""
-    if bogi_text.lower() == 'nan': bogi_text = ""
+    # ==============================================================
+    # ⭐ [V36 핵심] 보기/참고 칸에서 글씨와 사진을 똑똑하게 구별!
+    # ==============================================================
+    bogi_col = next((c for c in ['보기', '[보기]', '참고'] if c in df.columns), None)
+    bogi_raw = str(row[bogi_col]).strip() if bogi_col and pd.notna(row.get(bogi_col)) else ""
+    if bogi_raw.lower() == 'nan': bogi_raw = ""
+    
+    bogi_text = ""
+    bogi_imgs_html = ""
+    
+    # 보기 칸에 적힌 글씨가 이미지 확장자인지 냄새를 맡습니다.
+    if bogi_raw:
+        if any(ext in bogi_raw.lower() for ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp']):
+            bogi_imgs_html = get_images_html(bogi_raw) # 사진 파일이면 사진으로 변신!
+        else:
+            bogi_text = bogi_raw # 일반 글씨면 글씨로 둡니다.
 
     desc_col = next((c for c in ['그림설명', '화면설명', '동영상설명'] if c in df.columns), None)
     desc_text = str(row[desc_col]).strip() if desc_col and pd.notna(row.get(desc_col)) else ""
@@ -420,9 +429,15 @@ elif st.session_state.page == 'quiz':
     img_col = next((c for c in ['문제이미지', '그림및동영상', '사진', '그림'] if c in df.columns), None)
     q_imgs_html = get_images_html(row.get(img_col)) if img_col else ""
 
-    if bogi_text or q_imgs_html:
+    # [보기] 박스에 글씨와 사진을 모두 담아줍니다!
+    if bogi_text or bogi_imgs_html or q_imgs_html:
         combined_q_html = f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;">'
-        if bogi_text: combined_q_html += f'<strong>[보기]</strong><br><br><div style="white-space: pre-wrap;">{bogi_text}</div>'
+        
+        if bogi_text or bogi_imgs_html:
+            combined_q_html += f'<strong>[보기]</strong><br><br>'
+            if bogi_text: combined_q_html += f'<div style="white-space: pre-wrap;">{bogi_text}</div>'
+            if bogi_imgs_html: combined_q_html += bogi_imgs_html
+            
         if q_imgs_html: combined_q_html += q_imgs_html
         st.markdown(combined_q_html + '</div><br>', unsafe_allow_html=True)
                 
