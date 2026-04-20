@@ -20,17 +20,13 @@ STATS_FILE = "stats.json"
 GUESTBOOK_FILE = "guestbook.json"
 
 # ==========================================
-# ⚙️ [V29 핵심] 스마트 레이더: 폴더 상관없이 이미지 찾기!
+# ⚙️ 스마트 레이더: 폴더 상관없이 이미지 찾기!
 # ==========================================
 def find_image_path(filename):
-    """깃허브(서버) 내의 모든 폴더를 뒤져서 해당 사진의 정확한 주소를 찾아냅니다."""
-    # 자주 쓰는 폴더부터 먼저 빠르게 검사
     for folder in ["사진폴더", "실습형사진폴더"]:
         if os.path.exists(folder):
             for root, _, files in os.walk(folder):
                 if filename in files: return os.path.join(root, filename)
-    
-    # 그래도 없으면 전체 뒤지기
     for root, _, files in os.walk("."):
         if ".git" in root or "venv" in root: continue
         if filename in files: return os.path.join(root, filename)
@@ -44,13 +40,14 @@ def get_images_html(img_names_raw):
     img_html = ""
     img_names = [name.strip() for name in img_names_raw.replace(';', ',').split(',') if name.strip()]
     for img_name in img_names:
-        img_path = find_image_path(img_name) # 스마트 레이더 작동!
+        img_path = find_image_path(img_name)
         if img_path:
             with open(img_path, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read()).decode()
-            img_html += f'<div style="display: flex; justify-content: center; margin-top: 15px; margin-bottom: 15px;"><img src="data:image/png;base64,{encoded_string}" style="max-width: 100%; height: auto; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 1px 1px 3px rgba(0,0,0,0.1);"></div>'
+            # ⭐ [V30 핵심] 해상도가 깨지더라도 가로(width)를 100%로 꽉 채워서 테두리에 맞춥니다!
+            img_html += f'<div style="display: flex; justify-content: center; margin-top: 15px; margin-bottom: 15px;"><img src="data:image/png;base64,{encoded_string}" style="width: 100%; height: auto; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 1px 1px 3px rgba(0,0,0,0.1);"></div>'
         else:
-            img_html += f'<div style="color: red; text-align: center; margin-top: 10px; font-weight: bold;">🚨 이미지 없음: {img_name}<br><span style="font-size:12px;">(폴더에 사진을 업로드해주세요)</span></div>'
+            img_html += f'<div style="color: red; text-align: center; margin-top: 10px; font-weight: bold;">🚨 이미지 없음: {img_name}</div>'
     return img_html
 
 # ==========================================
@@ -261,7 +258,7 @@ if st.session_state.page == 'admin_dashboard' and st.session_state.is_admin:
         st.rerun()
 
 # ==========================================
-# ⭐ 화면 1: 단원 선택 화면 
+# ⭐ 화면 1: 단원 선택 화면
 # ==========================================
 elif st.session_state.page == 'selection':
     st.markdown("<h1 style='text-align: center;'>🚧 산업안전기사 마스터 CBT</h1>", unsafe_allow_html=True)
@@ -436,43 +433,38 @@ elif st.session_state.page == 'quiz':
     st.divider()
     st.subheader(f"{q_text}")
     
-    # ==============================================================
-    # ⭐ [V29] 엑셀 기둥 이름 자동 인식 (작업형 호환!)
-    # ==============================================================
+    # --------------------------------------------------------
+    # ⭐ [V30 핵심] 문제 박스와 화면 설명 완벽하게 분리 출력
+    # --------------------------------------------------------
     
-    # 1. 보기 인식
+    # 1. 보기
     bogi_col = next((c for c in ['보기', '[보기]'] if c in df.columns), None)
     bogi_text = str(row[bogi_col]).strip() if bogi_col and pd.notna(row.get(bogi_col)) else ""
     if bogi_text.lower() == 'nan': bogi_text = ""
 
-    # 2. 그림설명 (화면설명) 인식 -> 작업형의 핵심!
+    # 2. 화면 설명 (박스 밖으로 뺄 내용)
     desc_col = next((c for c in ['그림설명', '화면설명', '동영상설명'] if c in df.columns), None)
     desc_text = str(row[desc_col]).strip() if desc_col and pd.notna(row.get(desc_col)) else ""
     if desc_text.lower() == 'nan': desc_text = ""
 
-    # 3. 문제 이미지 인식 (그림및동영상 등 다양한 이름 호환)
+    # 3. 문제 이미지
     img_col = next((c for c in ['문제이미지', '그림및동영상', '사진', '그림'] if c in df.columns), None)
     q_imgs_html = get_images_html(row.get(img_col)) if img_col else ""
 
-    # 박스 안에 하나로 예쁘게 합치기
-    if bogi_text or desc_text or q_imgs_html:
+    # 보기나 이미지가 있으면 하얀 박스 안에 넣기
+    if bogi_text or q_imgs_html:
         combined_q_html = f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;">'
-        
-        # 화면설명이 있으면 예쁜 파란색 박스로 강조
-        if desc_text:
-            combined_q_html += f'<div style="background-color: #eaf2f8; padding: 12px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #3498db;">🎬 <strong>[화면 설명]</strong><br>{desc_text}</div>'
-            
-        if bogi_text:
-            combined_q_html += f'<strong>[보기]</strong><br><br><div style="white-space: pre-wrap;">{bogi_text}</div>'
-            
-        if q_imgs_html:
-            combined_q_html += q_imgs_html
-            
+        if bogi_text: combined_q_html += f'<strong>[보기]</strong><br><br><div style="white-space: pre-wrap;">{bogi_text}</div>'
+        if q_imgs_html: combined_q_html += q_imgs_html
         combined_q_html += '</div><br>'
         st.markdown(combined_q_html, unsafe_allow_html=True)
                 
     st.write("")
     is_mcq = '객관식보기' in df.columns and pd.notna(row.get('객관식보기'))
+
+    # ⭐ [V30 핵심] 화면 설명을 네모칸 밖으로 (정답버튼 바로 위) 분리!
+    if desc_text:
+        st.markdown(f'<div style="background-color: #eaf2f8; padding: 15px; border-radius: 8px; border-left: 5px solid #3498db; margin-bottom: 15px; color: #2c3e50; font-size: 15px; line-height: 1.6; box-shadow: 1px 1px 3px rgba(0,0,0,0.05);">🎬 <strong>[화면 설명]</strong><br><span style="white-space: pre-wrap;">{desc_text}</span></div>', unsafe_allow_html=True)
 
     def go_next(is_correct):
         save_history(q_text, is_correct)
@@ -501,16 +493,37 @@ elif st.session_state.page == 'quiz':
 
     if st.session_state.show_answer:
         st.divider()
-        ans_text = "" if pd.isna(row.get('해설')) else str(row['해설']).strip()
         
-        # 해설 이미지도 다양한 기둥 이름 호환
+        # --------------------------------------------------------
+        # ⭐ [V30 핵심] '정답'과 '해설'을 모두 스마트하게 인식!
+        # --------------------------------------------------------
+        ans_text_combined = ""
+        
+        ans_col = next((c for c in ['정답', '답'] if c in df.columns), None)
+        if ans_col and pd.notna(row.get(ans_col)):
+            val = str(row[ans_col]).strip()
+            if val.lower() != 'nan' and val:
+                ans_text_combined += f"<div style='white-space: pre-wrap;'>{val}</div>\n\n"
+                
+        exp_col = next((c for c in ['해설', '설명'] if c in df.columns), None)
+        if exp_col and pd.notna(row.get(exp_col)):
+            val = str(row[exp_col]).strip()
+            if val.lower() != 'nan' and val:
+                # 엑셀에서 정답과 해설이 똑같이 적혀있지 않은 경우에만 추가!
+                if val not in ans_text_combined:
+                    if ans_text_combined: ans_text_combined += "<strong>[해설]</strong><br>"
+                    ans_text_combined += f"<div style='white-space: pre-wrap;'>{val}</div>"
+                    
+        if not ans_text_combined:
+            ans_text_combined = "정답/해설 데이터가 없습니다."
+        
         ans_img_col = next((c for c in ['해설이미지', '해설사진'] if c in df.columns), None)
         ans_imgs_html = get_images_html(row.get(ans_img_col)) if ans_img_col else ""
         
-        combined_a_html = f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;"><strong>[정답 및 해설]</strong><br><br>'
-        if ans_text: combined_a_html += f'<div style="white-space: pre-wrap;">{ans_text}</div>'
+        combined_a_html = f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;"><strong>[정답 및 해설]</strong><br><br>{ans_text_combined}'
         if ans_imgs_html: combined_a_html += ans_imgs_html
         combined_a_html += '</div><br>'
+        
         st.markdown(combined_a_html, unsafe_allow_html=True)
                 
         c1, c2 = st.columns(2)
