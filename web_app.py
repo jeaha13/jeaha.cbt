@@ -44,22 +44,39 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ⚙️ [V37 핵심] 초고속 통합 폴더 탐색 레이더!
+# ⚙️ [V39 핵심] 오타 난 확장자 싹둑 자르고 찾아주는 셜록 홈즈 레이더!
 # ==========================================
 def find_image_path(filename):
-    """연도별 폴더를 뒤지지 않고, 통합 폴더에서 사진을 1초 만에 바로 낚아챕니다!"""
-    filename = filename.strip()
+    filename = str(filename).strip()
+    if not filename or filename.lower() == 'nan':
+        return None
+
+    # ⭐ 핵심: 엑셀에 적힌 이름에서 .png, .jpg 같은 확장자를 아예 떼어버립니다! 
+    # (예: "안전모.png" -> "안전모" 로 순수 이름만 추출)
+    base_name = os.path.splitext(filename)[0]
     
-    # 1. 지정된 통합 폴더에서 다이렉트로 찾기 (초고속!)
-    for folder in ["사진폴더", "실습형사진폴더"]:
-        target_path = os.path.join(folder, filename)
-        if os.path.exists(target_path):
-            return target_path
+    extensions = ['', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.PNG', '.JPG', '.JPEG']
+    search_folders = ["사진폴더", "실습형사진폴더"]
+
+    for folder in search_folders:
+        if not os.path.exists(folder): continue
+        for ext in extensions:
+            # 순수 이름에 가능한 모든 확장자를 하나씩 붙여가며 진짜 파일을 찾습니다.
+            target_name = base_name + ext
+            for root, _, files in os.walk(folder):
+                for f in files:
+                    if f.lower() == target_name.lower():
+                        return os.path.join(root, f)
             
-    # 2. 혹시 몰라 남겨두는 안전망 (전체 뒤지기)
+    # 최종 안전망: 현재 폴더 전체 뒤지기
     for root, _, files in os.walk("."):
         if ".git" in root or "venv" in root: continue
-        if filename in files: return os.path.join(root, filename)
+        for ext in extensions:
+            target_name = base_name + ext
+            for f in files:
+                if f.lower() == target_name.lower():
+                    return os.path.join(root, f)
+                    
     return None
 
 def get_images_html(img_names_raw):
@@ -418,9 +435,10 @@ elif st.session_state.page == 'quiz':
     bogi_text = ""
     bogi_imgs_html = ""
     if bogi_raw:
-        if any(ext in bogi_raw.lower() for ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp']):
-            bogi_imgs_html = get_images_html(bogi_raw) 
-        else:
+        found_img = find_image_path(bogi_raw)
+        if found_img: 
+            bogi_imgs_html = get_images_html(bogi_raw)
+        else: 
             bogi_text = bogi_raw
 
     desc_col = next((c for c in ['그림설명', '화면설명', '동영상설명'] if c in df.columns), None)
