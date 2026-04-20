@@ -44,7 +44,8 @@ def get_images_html(img_names_raw):
         if img_path:
             with open(img_path, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read()).decode()
-            img_html += f'<div style="display: flex; justify-content: center; margin-top: 15px; margin-bottom: 15px;"><img src="data:image/png;base64,{encoded_string}" style="width: 100%; height: auto; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 1px 1px 3px rgba(0,0,0,0.1);"></div>'
+            # ⭐ [V32 핵심 해결] 이미지를 감싸는 상자(div)의 족쇄를 풀고 width: 100% 강제 부여!
+            img_html += f'<div style="width: 100%; margin-top: 15px; margin-bottom: 15px;"><img src="data:image/png;base64,{encoded_string}" style="width: 100%; height: auto; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 1px 1px 3px rgba(0,0,0,0.1);"></div>'
         else:
             img_html += f'<div style="color: red; text-align: center; margin-top: 10px; font-weight: bold;">🚨 이미지 없음: {img_name}</div>'
     return img_html
@@ -336,7 +337,7 @@ elif st.session_state.page == 'selection':
             else: st.warning("글 내용을 입력해 주세요!")
 
 # ==========================================
-# ⭐ 화면 2: 퀴즈 화면 (참고란 → [보기] 박스 통합!)
+# ⭐ 화면 2: 퀴즈 화면 
 # ==========================================
 elif st.session_state.page == 'quiz':
     df, idx = st.session_state.df, st.session_state.index
@@ -381,24 +382,18 @@ elif st.session_state.page == 'quiz':
     st.divider()
     st.subheader(f"{q_text}")
     
-    # --------------------------------------------------------
-    # ⭐ [V31 핵심] 참고란/보기란 자동 통합 박스
-    # --------------------------------------------------------
-    # '참고', '보기', '[보기]' 중 데이터가 있는 첫 번째 컬럼을 가져옵니다.
+    # '참고', '보기', '[보기]' 통합
     bogi_col = next((c for c in ['참고', '보기', '[보기]'] if c in df.columns), None)
     bogi_text = str(row[bogi_col]).strip() if bogi_col and pd.notna(row.get(bogi_col)) else ""
     if bogi_text.lower() == 'nan': bogi_text = ""
 
-    # 작업형 화면 설명 (박스 밖)
     desc_col = next((c for c in ['그림설명', '화면설명', '동영상설명'] if c in df.columns), None)
     desc_text = str(row[desc_col]).strip() if desc_col and pd.notna(row.get(desc_col)) else ""
     if desc_text.lower() == 'nan': desc_text = ""
 
-    # 이미지 처리 (다양한 이름 호환)
     img_col = next((c for c in ['문제이미지', '그림및동영상', '사진', '그림'] if c in df.columns), None)
     q_imgs_html = get_images_html(row.get(img_col)) if img_col else ""
 
-    # [보기] 박스 출력 (참고란 내용 포함)
     if bogi_text or q_imgs_html:
         combined_q_html = f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;">'
         if bogi_text: combined_q_html += f'<strong>[보기]</strong><br><br><div style="white-space: pre-wrap;">{bogi_text}</div>'
@@ -469,7 +464,7 @@ elif st.session_state.page == 'result':
             final_score = sum(get_question_point(st.session_state.df, i) for i, v in st.session_state.user_answers.items() if v)
             total_score = st.session_state.total_possible_score
             st.markdown(f"#### 내 점수: <span style='color:#3498db'>{final_score}점</span> / 총점: {total_score}점", unsafe_allow_html=True)
-            c1, c2, c3 = st.columns(3); c1.metric("🎯 득점률", f"{(final_score/total_score*100):.1f}%"); c2.metric("⭕ 맞음", f"{correct} 개"); c3.metric("❌ 틀림", f"{incorrect} 개")
+            c1, c2, c3 = st.columns(3); c1.metric("🎯 득점률", f"{(final_score/total_score*100):.1f}%" if total_score > 0 else "0.0%"); c2.metric("⭕ 맞음", f"{correct} 개"); c3.metric("❌ 틀림", f"{incorrect} 개")
             st.progress(min(max(final_score / total_score if total_score > 0 else 0, 0.0), 1.0))
         else:
             acc = (correct / total_q * 100) if total_q > 0 else 0
