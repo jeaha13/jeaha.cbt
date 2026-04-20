@@ -44,13 +44,19 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ⚙️ 스마트 레이더: 폴더 상관없이 이미지 찾기!
+# ⚙️ [V37 핵심] 초고속 통합 폴더 탐색 레이더!
 # ==========================================
 def find_image_path(filename):
+    """연도별 폴더를 뒤지지 않고, 통합 폴더에서 사진을 1초 만에 바로 낚아챕니다!"""
+    filename = filename.strip()
+    
+    # 1. 지정된 통합 폴더에서 다이렉트로 찾기 (초고속!)
     for folder in ["사진폴더", "실습형사진폴더"]:
-        if os.path.exists(folder):
-            for root, _, files in os.walk(folder):
-                if filename in files: return os.path.join(root, filename)
+        target_path = os.path.join(folder, filename)
+        if os.path.exists(target_path):
+            return target_path
+            
+    # 2. 혹시 몰라 남겨두는 안전망 (전체 뒤지기)
     for root, _, files in os.walk("."):
         if ".git" in root or "venv" in root: continue
         if filename in files: return os.path.join(root, filename)
@@ -405,22 +411,17 @@ elif st.session_state.page == 'quiz':
     st.divider()
     st.subheader(f"{q_text}")
     
-    # ==============================================================
-    # ⭐ [V36 핵심] 보기/참고 칸에서 글씨와 사진을 똑똑하게 구별!
-    # ==============================================================
-    bogi_col = next((c for c in ['보기', '[보기]', '참고'] if c in df.columns), None)
+    bogi_col = next((c for c in ['참고', '보기', '[보기]'] if c in df.columns), None)
     bogi_raw = str(row[bogi_col]).strip() if bogi_col and pd.notna(row.get(bogi_col)) else ""
     if bogi_raw.lower() == 'nan': bogi_raw = ""
     
     bogi_text = ""
     bogi_imgs_html = ""
-    
-    # 보기 칸에 적힌 글씨가 이미지 확장자인지 냄새를 맡습니다.
     if bogi_raw:
         if any(ext in bogi_raw.lower() for ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp']):
-            bogi_imgs_html = get_images_html(bogi_raw) # 사진 파일이면 사진으로 변신!
+            bogi_imgs_html = get_images_html(bogi_raw) 
         else:
-            bogi_text = bogi_raw # 일반 글씨면 글씨로 둡니다.
+            bogi_text = bogi_raw
 
     desc_col = next((c for c in ['그림설명', '화면설명', '동영상설명'] if c in df.columns), None)
     desc_text = str(row[desc_col]).strip() if desc_col and pd.notna(row.get(desc_col)) else ""
@@ -429,7 +430,6 @@ elif st.session_state.page == 'quiz':
     img_col = next((c for c in ['문제이미지', '그림및동영상', '사진', '그림'] if c in df.columns), None)
     q_imgs_html = get_images_html(row.get(img_col)) if img_col else ""
 
-    # [보기] 박스에 글씨와 사진을 모두 담아줍니다!
     if bogi_text or bogi_imgs_html or q_imgs_html:
         combined_q_html = f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;">'
         
