@@ -20,55 +20,47 @@ STATS_FILE = "stats.json"
 GUESTBOOK_FILE = "guestbook.json"
 
 # ==========================================
-# ⚙️ 완벽한 이미지 핏 (object-fit: cover)
+# ⚙️ [V41 핵심] 똑똑한 이미지 크기 조절 (절대 안 짤림!)
 # ==========================================
 st.markdown("""
 <style>
     .cbt-img-box {
         width: 100%;
-        height: 400px; 
+        display: flex;
+        justify-content: center; /* 이미지를 항상 가운데 정렬 */
         margin: 15px 0;
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        overflow: hidden; 
-        box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
-        background-color: white;
     }
     .cbt-img-box img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover; 
-        object-position: center; 
+        max-width: 100%;  /* 화면을 넘어가면 줄이고, 작은 공식은 원본 유지! */
+        height: auto;     /* 비율 100% 보장 (절대 짤림 방지) */
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ⚙️ [V39 핵심] 오타 난 확장자 싹둑 자르고 찾아주는 셜록 홈즈 레이더!
+# ⚙️ 확장자 무시 & 통합 폴더 탐색 레이더!
 # ==========================================
 def find_image_path(filename):
     filename = str(filename).strip()
     if not filename or filename.lower() == 'nan':
         return None
 
-    # ⭐ 핵심: 엑셀에 적힌 이름에서 .png, .jpg 같은 확장자를 아예 떼어버립니다! 
-    # (예: "안전모.png" -> "안전모" 로 순수 이름만 추출)
     base_name = os.path.splitext(filename)[0]
-    
     extensions = ['', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.PNG', '.JPG', '.JPEG']
     search_folders = ["사진폴더", "실습형사진폴더"]
 
     for folder in search_folders:
         if not os.path.exists(folder): continue
         for ext in extensions:
-            # 순수 이름에 가능한 모든 확장자를 하나씩 붙여가며 진짜 파일을 찾습니다.
             target_name = base_name + ext
             for root, _, files in os.walk(folder):
                 for f in files:
                     if f.lower() == target_name.lower():
                         return os.path.join(root, f)
             
-    # 최종 안전망: 현재 폴더 전체 뒤지기
     for root, _, files in os.walk("."):
         if ".git" in root or "venv" in root: continue
         for ext in extensions:
@@ -97,7 +89,7 @@ def get_images_html(img_names_raw):
     return img_html
 
 # ==========================================
-# ⚙️ 방명록 및 데이터 관리 도우미
+# ⚙️ 데이터 및 방명록 관리 도우미
 # ==========================================
 def load_guestbook():
     if os.path.exists(GUESTBOOK_FILE):
@@ -304,7 +296,7 @@ if st.session_state.page == 'admin_dashboard' and st.session_state.is_admin:
         st.rerun()
 
 # ==========================================
-# ⭐ 화면 1: 단원 선택 화면 
+# ⭐ 화면 1: 단원 선택 화면
 # ==========================================
 elif st.session_state.page == 'selection':
     st.markdown("<h1 style='text-align: center;'>🚧 산업안전기사 마스터 CBT</h1>", unsafe_allow_html=True)
