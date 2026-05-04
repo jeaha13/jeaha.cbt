@@ -199,7 +199,12 @@ def get_question_point(df, index):
             except: pass
     return 5 
 
-# 💡 세션 초기화 함수에 cert_type과 exam_type 매개변수 추가
+# 👇 [에러 해결!] 점수 계산 함수가 올바르게 배치되었습니다. 👇
+def calculate_total_possible_score(df):
+    total = 0
+    for i in range(len(df)): total += get_question_point(df, i)
+    return total
+
 def init_quiz_state(df, is_mock, is_review, is_bookmark, cert_type=None, exam_type=None):
     st.session_state.df = df
     st.session_state.total_possible_score = calculate_total_possible_score(df)
@@ -335,7 +340,7 @@ elif st.session_state.page == 'selection':
     xls = pd.ExcelFile(target_file)
     sheet_names = xls.sheet_names
     
-    is_shuffle = st.checkbox("🔀 문제 순서 랜덤하게 섞기", value=False) # 시험 형태 유지를 위해 기본값을 False로 두는 것도 좋습니다.
+    is_shuffle = st.checkbox("🔀 문제 순서 랜덤하게 섞기", value=False)
     view_mode = st.radio("보기 방식", ["🔽 드롭다운", "🔠 펼쳐보기"], horizontal=True, label_visibility="collapsed")
     
     def start_new_quiz(target_sheet, current_file, current_cert, current_exam):
@@ -345,7 +350,6 @@ elif st.session_state.page == 'selection':
         if is_shuffle: df = df.sample(frac=1).reset_index(drop=True)
         
         is_mock_exam = any(kw in target_sheet for kw in ["년", "회", "기출", "과년도"])
-        # 💡 선택한 자격증과 시험 유형 정보를 세션에 전달
         init_quiz_state(df, is_mock_exam, False, False, current_cert, current_exam)
         st.rerun()
 
@@ -445,7 +449,7 @@ elif st.session_state.page == 'quiz':
             
     st.divider()
 
-    # 💡 [신규 핵심 로직] 소방설비기사 필기시험일 때 과목 배지 생성
+    # 💡 소방설비기사 필기시험일 때 과목 배지 생성
     subject_badge = ""
     if st.session_state.cert_type == "🔥 소방설비기사(전기)" and "필기" in st.session_state.exam_type:
         q_num = idx + 1
@@ -454,10 +458,8 @@ elif st.session_state.page == 'quiz':
         elif 41 <= q_num <= 60: subj = "3과목: 소방관계법규"
         else: subj = "4과목: 소방전기시설의 구조 및 원리"
         
-        # 시각적으로 예쁘게 보여주는 HTML 배지 디자인
         subject_badge = f"<span style='background-color:#e74c3c; color:white; padding:4px 10px; border-radius:6px; font-size:14px; font-weight:bold; margin-right:10px; display:inline-block; margin-bottom:10px;'>📚 {subj}</span><br>"
         
-    # 문제 출력 (과목 배지가 있으면 위에 띄워줍니다)
     st.markdown(f"{subject_badge}<h3 style='margin-top:0px;'>{idx+1}. {q_text}</h3>", unsafe_allow_html=True)
     
     bogi_col = next((c for c in ['참고', '보기', '[보기]'] if c in df.columns), None)
@@ -477,7 +479,6 @@ elif st.session_state.page == 'quiz':
     desc_text = str(row[desc_col]).strip() if desc_col and pd.notna(row.get(desc_col)) else ""
     if desc_text.lower() == 'nan': desc_text = ""
 
-    # 💡 [확인] 이미 '문제이미지' 열을 지원하고 있습니다!
     img_col = next((c for c in ['문제이미지', '그림및동영상', '사진', '그림'] if c in df.columns), None)
     q_imgs_html = get_images_html(row.get(img_col)) if img_col else ""
 
@@ -522,7 +523,6 @@ elif st.session_state.page == 'quiz':
                     if ans_text and c in ['해설', '설명']: ans_text += "<br><strong>[해설]</strong><br>"
                     ans_text += f"<div style='white-space: pre-wrap;'>{val}</div>"
         
-        # 💡 [확인] 이미 '해설이미지' 열을 지원하고 있습니다!
         ans_img_col = next((c for c in ['해설이미지', '해설사진'] if c in df.columns), None)
         ans_imgs_html = get_images_html(row.get(ans_img_col)) if ans_img_col else ""
         st.markdown(f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;"><strong>[정답 및 해설]</strong><br><br>{ans_text if ans_text else "데이터 없음"}{ans_imgs_html}</div><br>', unsafe_allow_html=True)
