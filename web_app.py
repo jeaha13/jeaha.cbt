@@ -12,27 +12,29 @@ import datetime
 # ==========================================
 # 1. 웹사이트 기본 설정
 # ==========================================
-st.set_page_config(page_title="산업안전기사 마스터 CBT", page_icon="🚧", layout="centered")
+st.set_page_config(page_title="자격증 문제풀이 CBT", page_icon="🎓", layout="centered")
 
 FILE_PILDAP = "산업안전기사_실기_문제은행.xlsx"
 FILE_JAKUP = "산업안전기사_작업형_문제은행.xlsx"
+FILE_SOBANG_PILGI = "소방설비기사_필기_문제은행.xlsx"
+FILE_SOBANG_SILGI = "소방설비기사_실기_문제은행.xlsx"
 STATS_FILE = "stats.json" 
 GUESTBOOK_FILE = "guestbook.json"
 
 # ==========================================
-# ⚙️ [V41 핵심] 똑똑한 이미지 크기 조절 (절대 안 짤림!)
+# ⚙️ 똑똑한 이미지 크기 조절 (절대 안 짤림!)
 # ==========================================
 st.markdown("""
 <style>
     .cbt-img-box {
         width: 100%;
         display: flex;
-        justify-content: center; /* 이미지를 항상 가운데 정렬 */
+        justify-content: center;
         margin: 15px 0;
     }
     .cbt-img-box img {
-        max-width: 100%;  /* 화면을 넘어가면 줄이고, 작은 공식은 원본 유지! */
-        height: auto;     /* 비율 100% 보장 (절대 짤림 방지) */
+        max-width: 100%;  
+        height: auto;     
         border: 1px solid #e0e0e0;
         border-radius: 8px;
         box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
@@ -157,7 +159,8 @@ def remove_from_incorrect_note(question_text):
     if os.path.exists(note_filename):
         df_old = pd.read_excel(note_filename)
         df_new = df_old[df_old['문제'] != question_text]
-        if df_new.empty: os.remove(note_filename) if os.path.exists(note_filename) else None
+        if df_new.empty: 
+            if os.path.exists(note_filename): os.remove(note_filename)
         else: df_new.to_excel(note_filename, index=False)
 
 def is_bookmarked(question_text):
@@ -176,7 +179,8 @@ def toggle_bookmark(row):
         df_old = pd.read_excel(mark_filename)
         if q_text in df_old['문제'].values:
             df_new = df_old[df_old['문제'] != q_text]
-            if df_new.empty: os.remove(mark_filename) if os.path.exists(mark_filename) else None
+            if df_new.empty: 
+                if os.path.exists(mark_filename): os.remove(mark_filename)
             else: df_new.to_excel(mark_filename, index=False)
             return False 
         else:
@@ -195,12 +199,8 @@ def get_question_point(df, index):
             except: pass
     return 5 
 
-def calculate_total_possible_score(df):
-    total = 0
-    for i in range(len(df)): total += get_question_point(df, i)
-    return total
-
-def init_quiz_state(df, is_mock, is_review, is_bookmark):
+# 💡 세션 초기화 함수에 cert_type과 exam_type 매개변수 추가
+def init_quiz_state(df, is_mock, is_review, is_bookmark, cert_type=None, exam_type=None):
     st.session_state.df = df
     st.session_state.total_possible_score = calculate_total_possible_score(df)
     st.session_state.index = 0
@@ -209,6 +209,8 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark):
     st.session_state.is_mock_exam = is_mock
     st.session_state.is_review_mode = is_review
     st.session_state.is_bookmark_mode = is_bookmark
+    st.session_state.cert_type = cert_type
+    st.session_state.exam_type = exam_type
     st.session_state.start_time = time.time()
     st.session_state.page = 'quiz'
 
@@ -218,7 +220,7 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark):
 keys_to_init = [
     'page', 'df', 'index', 'total_possible_score', 'user_answers',
     'show_answer', 'start_time', 'is_review_mode', 'is_bookmark_mode', 
-    'is_mock_exam', 'has_visited', 'is_admin'
+    'is_mock_exam', 'has_visited', 'is_admin', 'cert_type', 'exam_type'
 ]
 for key in keys_to_init:
     if key not in st.session_state: st.session_state[key] = None
@@ -299,42 +301,66 @@ if st.session_state.page == 'admin_dashboard' and st.session_state.is_admin:
 # ⭐ 화면 1: 단원 선택 화면
 # ==========================================
 elif st.session_state.page == 'selection':
-    st.markdown("<h1 style='text-align: center;'>🚧 산업안전기사 마스터 CBT</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>🎓 자격증 문제풀이 CBT</h1>", unsafe_allow_html=True)
     if st.session_state.is_admin: st.info("👑 현재 관리자 권한으로 접속 중입니다.")
     else: st.caption(f"접속 기기 IP: {st.session_state.nickname}")
     
     st.write("")
-    exam_type = st.radio("시험 유형 선택", ["✍️ 필답형 (주관식/서술)", "💻 작업형 (동영상/도면)"], horizontal=True)
-    target_file = FILE_PILDAP if "필답형" in exam_type else FILE_JAKUP
+    
+    cert_type = st.radio(
+        "📚 자격증 선택", 
+        ["🚧 산업안전기사", "🔥 소방설비기사(전기)"], 
+        horizontal=True
+    )
+    
+    if "산업안전기사" in cert_type:
+        exam_type = st.radio(
+            "📝 시험 유형 선택", 
+            ["✍️ 필답형 (주관식/서술)", "💻 작업형 (동영상/도면)"], 
+            horizontal=True
+        )
+        target_file = FILE_PILDAP if "필답형" in exam_type else FILE_JAKUP
+    else:
+        exam_type = st.radio(
+            "📝 시험 유형 선택", 
+            ["📖 필기 (객관식)", "✍️ 실기 (주관식/서술)"], 
+            horizontal=True
+        )
+        target_file = FILE_SOBANG_PILGI if "필기" in exam_type else FILE_SOBANG_SILGI
     
     if not os.path.exists(target_file):
-        st.error(f"⚠️ 현재 폴더에 '{target_file}' 파일이 없습니다!")
+        st.error(f"⚠️ 현재 폴더에 '{target_file}' 파일이 없습니다! 엑셀 파일을 먼저 업로드해주세요.")
         st.stop()
         
     xls = pd.ExcelFile(target_file)
     sheet_names = xls.sheet_names
     
-    is_shuffle = st.checkbox("🔀 문제 순서 랜덤하게 섞기", value=True)
+    is_shuffle = st.checkbox("🔀 문제 순서 랜덤하게 섞기", value=False) # 시험 형태 유지를 위해 기본값을 False로 두는 것도 좋습니다.
     view_mode = st.radio("보기 방식", ["🔽 드롭다운", "🔠 펼쳐보기"], horizontal=True, label_visibility="collapsed")
     
-    def start_new_quiz(target_sheet, current_file):
+    def start_new_quiz(target_sheet, current_file, current_cert, current_exam):
         df = pd.read_excel(current_file, sheet_name=target_sheet)
         df.columns = df.columns.str.replace(' ', '')
         if '출처' not in df.columns: df['출처'] = target_sheet 
         if is_shuffle: df = df.sample(frac=1).reset_index(drop=True)
-        init_quiz_state(df, any(kw in target_sheet for kw in ["년", "회", "기출", "과년도"]), False, False)
+        
+        is_mock_exam = any(kw in target_sheet for kw in ["년", "회", "기출", "과년도"])
+        # 💡 선택한 자격증과 시험 유형 정보를 세션에 전달
+        init_quiz_state(df, is_mock_exam, False, False, current_cert, current_exam)
         st.rerun()
 
     st.write("---")
     if "드롭다운" in view_mode:
         selected_sheet = st.selectbox("📚 단원 선택", sheet_names)
-        if st.button("문제 풀기 🚀", use_container_width=True, type="primary"): start_new_quiz(selected_sheet, target_file)
+        if st.button("문제 풀기 🚀", use_container_width=True, type="primary"): 
+            start_new_quiz(selected_sheet, target_file, cert_type, exam_type)
     else:
         st.markdown("##### 📚 클릭하면 즉시 시작됩니다!")
         cols = st.columns(2)
         for i, sheet in enumerate(sheet_names):
             with cols[i % 2]:
-                if st.button(f"📖 {sheet}", use_container_width=True): start_new_quiz(sheet, target_file)
+                if st.button(f"📖 {sheet}", use_container_width=True): 
+                    start_new_quiz(sheet, target_file, cert_type, exam_type)
                 
     st.write("---")
     col1, col2 = st.columns(2)
@@ -346,7 +372,7 @@ elif st.session_state.page == 'selection':
                 df = pd.read_excel(note_filename)
                 df.columns = df.columns.str.replace(' ', '')
                 if is_shuffle: df = df.sample(frac=1).reset_index(drop=True)
-                init_quiz_state(df, False, True, False)
+                init_quiz_state(df, False, True, False, "오답노트", "종합")
                 st.rerun()
     with col2:
         if st.button("⭐ 내 즐겨찾기 풀기", use_container_width=True):
@@ -356,7 +382,7 @@ elif st.session_state.page == 'selection':
                 df = pd.read_excel(mark_filename)
                 df.columns = df.columns.str.replace(' ', '')
                 if is_shuffle: df = df.sample(frac=1).reset_index(drop=True)
-                init_quiz_state(df, False, False, True)
+                init_quiz_state(df, False, False, True, "즐겨찾기", "종합")
                 st.rerun()
 
     st.write("---")
@@ -418,7 +444,21 @@ elif st.session_state.page == 'quiz':
     st.caption(f"{source_str}📊 이력: 맞음 {q_history['correct']} / 틀림 {q_history['incorrect']}" if (q_history['correct']+q_history['incorrect']) > 0 else f"{source_str}✨ 처음 푸는 문제입니다!")
             
     st.divider()
-    st.subheader(f"{q_text}")
+
+    # 💡 [신규 핵심 로직] 소방설비기사 필기시험일 때 과목 배지 생성
+    subject_badge = ""
+    if st.session_state.cert_type == "🔥 소방설비기사(전기)" and "필기" in st.session_state.exam_type:
+        q_num = idx + 1
+        if 1 <= q_num <= 20: subj = "1과목: 소방원론"
+        elif 21 <= q_num <= 40: subj = "2과목: 소방전기회로"
+        elif 41 <= q_num <= 60: subj = "3과목: 소방관계법규"
+        else: subj = "4과목: 소방전기시설의 구조 및 원리"
+        
+        # 시각적으로 예쁘게 보여주는 HTML 배지 디자인
+        subject_badge = f"<span style='background-color:#e74c3c; color:white; padding:4px 10px; border-radius:6px; font-size:14px; font-weight:bold; margin-right:10px; display:inline-block; margin-bottom:10px;'>📚 {subj}</span><br>"
+        
+    # 문제 출력 (과목 배지가 있으면 위에 띄워줍니다)
+    st.markdown(f"{subject_badge}<h3 style='margin-top:0px;'>{idx+1}. {q_text}</h3>", unsafe_allow_html=True)
     
     bogi_col = next((c for c in ['참고', '보기', '[보기]'] if c in df.columns), None)
     bogi_raw = str(row[bogi_col]).strip() if bogi_col and pd.notna(row.get(bogi_col)) else ""
@@ -437,6 +477,7 @@ elif st.session_state.page == 'quiz':
     desc_text = str(row[desc_col]).strip() if desc_col and pd.notna(row.get(desc_col)) else ""
     if desc_text.lower() == 'nan': desc_text = ""
 
+    # 💡 [확인] 이미 '문제이미지' 열을 지원하고 있습니다!
     img_col = next((c for c in ['문제이미지', '그림및동영상', '사진', '그림'] if c in df.columns), None)
     q_imgs_html = get_images_html(row.get(img_col)) if img_col else ""
 
@@ -481,6 +522,7 @@ elif st.session_state.page == 'quiz':
                     if ans_text and c in ['해설', '설명']: ans_text += "<br><strong>[해설]</strong><br>"
                     ans_text += f"<div style='white-space: pre-wrap;'>{val}</div>"
         
+        # 💡 [확인] 이미 '해설이미지' 열을 지원하고 있습니다!
         ans_img_col = next((c for c in ['해설이미지', '해설사진'] if c in df.columns), None)
         ans_imgs_html = get_images_html(row.get(ans_img_col)) if ans_img_col else ""
         st.markdown(f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;"><strong>[정답 및 해설]</strong><br><br>{ans_text if ans_text else "데이터 없음"}{ans_imgs_html}</div><br>', unsafe_allow_html=True)
@@ -508,7 +550,7 @@ elif st.session_state.page == 'result':
         if left_cnt > 0 and st.button(f"🔁 남은 오답 다시 풀기", use_container_width=True, type="primary"):
             df_left = pd.read_excel(f"{st.session_state.nickname}_오답노트.xlsx")
             df_left.columns = df_left.columns.str.replace(' ', '')
-            init_quiz_state(df_left.sample(frac=1).reset_index(drop=True), False, True, False); st.rerun()
+            init_quiz_state(df_left.sample(frac=1).reset_index(drop=True), False, True, False, "오답노트", "종합"); st.rerun()
     else:
         st.markdown(f"### {'⭐ 즐겨찾기' if st.session_state.is_bookmark_mode else '📚 문제 풀이'} 결과")
         if st.session_state.is_mock_exam:
