@@ -8,6 +8,7 @@ import io
 import glob
 import base64
 import datetime
+import re  # 💡 텍스트에서 문제와 정답을 찾아내는 정규표현식 모듈 추가!
 
 # ==========================================
 # 1. 웹사이트 기본 설정
@@ -199,7 +200,6 @@ def get_question_point(df, index):
             except: pass
     return 5 
 
-# 👇 [에러 해결!] 점수 계산 함수가 올바르게 배치되었습니다. 👇
 def calculate_total_possible_score(df):
     total = 0
     for i in range(len(df)): total += get_question_point(df, i)
@@ -218,6 +218,53 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark, cert_type=None, exam_ty
     st.session_state.exam_type = exam_type
     st.session_state.start_time = time.time()
     st.session_state.page = 'quiz'
+
+# 💡 [신규 엔진] 텍스트를 분석하여 데이터프레임으로 만들어주는 함수
+def parse_raw_text_to_df(raw_text, source_name):
+    questions = []
+    current_q = None
+    lines = raw_text.strip().split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        if not line: continue
+        
+        # 1. 문장 맨 앞이 '숫자.' 로 시작하면 새로운 문제로 인식
+        q_match = re.match(r'^(\d+)\.\s*(.*)', line)
+        if q_match:
+            if current_q: questions.append(current_q)
+            q_num = q_match.group(1)
+            q_text = q_match.group(2)
+            current_q = {'문제': f"{q_num}. {q_text}", '객관식보기': [], '정답': '', '해설': '', '문제이미지': '', '출처': source_name}
+            
+            # 이미지 키워드가 있으면 이미지 자리표시자 자동 생성
+            if any(kw in q_text for kw in ["그림", "도면", "그래프", "곡선"]):
+                current_q['문제이미지'] = f"img_{q_num}번_확인.png"
+            continue
+            
+        # 2. 객관식 보기와 까만 동그라미(정답) 기호 추적
+        if current_q:
+            options = re.findall(r'([①②③④❶❷❸❹])\s*([^①②③④❶❷❸❹]+)', line)
+            if options:
+                for symbol, text in options:
+                    text = text.strip()
+                    # 엑셀에 저장할 때는 일반 동그라미로 통일
+                    standard_symbol = symbol.translate(str.maketrans('❶❷❸❹', '①②③④'))
+                    current_q['객관식보기'].append(f"{standard_symbol} {text}")
+                    
+                    # 까만 동그라미면 정답으로 기록
+                    if symbol == '❶': current_q['정답'] = '1'
+                    elif symbol == '❷': current_q['정답'] = '2'
+                    elif symbol == '❸': current_q['정답'] = '3'
+                    elif symbol == '❹': current_q['정답'] = '4'
+            else:
+                # 보기가 없는데 텍스트가 있다면 문제가 여러 줄인 경우 합쳐줌
+                if not current_q['객관식보기']:
+                    current_q['문제'] += " " + line
+
+    if current_q: questions.append(current_q)
+    for q in questions: q['객관식보기'] = '\n'.join(q['객관식보기'])
+    return pd.DataFrame(questions)
 
 # ==========================================
 # 🛠️ 세션 상태 초기화
@@ -277,6 +324,40 @@ if st.session_state.page == 'admin_dashboard' and st.session_state.is_admin:
     with col2: st.metric(label="👥 문제를 푼 기기(IP) 수", value=f"{ip_users} 대")
     st.write("---")
     
+    # 💡 [신규 기능] 소방설비기사 필기 문제 자동 변환기 UI
+    st.subheader("🚀 소방설비기사 필기 문제 자동 추가기")
+    st.markdown("PDF나 Word 파일의 텍스트를 드래그해서 복사한 후, 아래 빈칸에 붙여넣어 주세요!")
+    
+    new_sheet_name = st.text_input("저장할 단원(시트) 이름 입력", "2024년 1회 기출")
+    raw_exam_text = st.text_area("여기에 텍스트를 붙여넣으세요 (문제, 동그라미 번호, 까만 동그라미 정답 포함)", height=200)
+    
+    if st.button("✨ 변환 후 엑셀에 자동 추가하기", type="primary"):
+        if raw_exam_text.strip():
+            # 1. 텍스트를 분석하여 데이터프레임으로 만들기
+            df_new = parse_raw_text_to_df(raw_exam_text, new_sheet_name)
+            
+            if len(df_new) > 0:
+                # 2. 기존 소방설비기사 파일에 새로운 시트로 저장하기 (이어쓰기)
+                try:
+                    if os.path.exists(FILE_SOBANG_PILGI):
+                        # 파일이 있으면 열어서 새로운 시트를 추가합니다.
+                        with pd.ExcelWriter(FILE_SOBANG_PILGI, mode='a', engine='openpyxl', if_sheet_exists='replace') as writer:
+                            df_new.to_excel(writer, sheet_name=new_sheet_name, index=False)
+                    else:
+                        # 파일이 없으면 새로 만듭니다.
+                        df_new.to_excel(FILE_SOBANG_PILGI, sheet_name=new_sheet_name, index=False)
+                        
+                    st.success(f"🎉 성공! 총 {len(df_new)}문제가 '{FILE_SOBANG_PILGI}'의 [{new_sheet_name}] 시트에 저장되었습니다!")
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"저장 중 오류가 발생했습니다. (엑셀 파일이 켜져있다면 닫아주세요): {e}")
+            else:
+                st.warning("분석된 문제가 없습니다. 형식이 맞는지 다시 확인해 주세요.")
+        else:
+            st.warning("변환할 텍스트를 입력해 주세요.")
+            
+    st.write("---")
+
     st.subheader("💾 서버 초기화 방어 센터 (백업/복구)")
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
