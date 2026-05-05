@@ -210,6 +210,8 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark, cert_type=None, exam_ty
     st.session_state.index = 0
     st.session_state.user_answers = {} 
     st.session_state.show_answer = False
+    # 💡 [핵심] 몇 번 보기를 클릭했는지 기억하는 변수 추가
+    st.session_state.clicked_opt = None 
     st.session_state.is_mock_exam = is_mock
     st.session_state.is_review_mode = is_review
     st.session_state.is_bookmark_mode = is_bookmark
@@ -224,7 +226,8 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark, cert_type=None, exam_ty
 keys_to_init = [
     'page', 'df', 'index', 'total_possible_score', 'user_answers',
     'show_answer', 'start_time', 'is_review_mode', 'is_bookmark_mode', 
-    'is_mock_exam', 'has_visited', 'is_admin', 'cert_type', 'exam_type'
+    'is_mock_exam', 'has_visited', 'is_admin', 'cert_type', 'exam_type',
+    'clicked_opt' # 💡 추가됨
 ]
 for key in keys_to_init:
     if key not in st.session_state: st.session_state[key] = None
@@ -418,12 +421,12 @@ elif st.session_state.page == 'quiz':
     c_prev, c_nav, c_mark, c_home = st.columns([1.5, 3, 1.5, 1.5])
     with c_prev:
         if idx > 0:
-            if st.button("◀ 이전", use_container_width=True): st.session_state.index -= 1; st.session_state.show_answer = False; st.rerun()
+            if st.button("◀ 이전", use_container_width=True): st.session_state.index -= 1; st.session_state.show_answer = False; st.session_state.clicked_opt = None; st.rerun()
         else: st.write("") 
     with c_nav:
         q_list = [f"{i+1}번 문제 이동" for i in range(len(df))]
         jump_select = st.selectbox("이동", q_list, index=idx, label_visibility="collapsed")
-        if q_list.index(jump_select) != idx: st.session_state.index = q_list.index(jump_select); st.session_state.show_answer = False; st.rerun()
+        if q_list.index(jump_select) != idx: st.session_state.index = q_list.index(jump_select); st.session_state.show_answer = False; st.session_state.clicked_opt = None; st.rerun()
     with c_mark:
         bookmarked = is_bookmarked(q_text)
         if st.button("🌟 저장" if bookmarked else "⭐ 저장", type="primary" if bookmarked else "secondary", use_container_width=True): toggle_bookmark(row); st.rerun() 
@@ -448,7 +451,7 @@ elif st.session_state.page == 'quiz':
             
     st.divider()
 
-    # 💡 소방설비기사 필기시험일 때 과목 배지 생성
+    # 소방설비기사 필기시험일 때 과목 배지 생성
     subject_badge = ""
     if st.session_state.cert_type == "🔥 소방설비기사(전기)" and "필기" in st.session_state.exam_type:
         q_num = idx + 1
@@ -495,23 +498,63 @@ elif st.session_state.page == 'quiz':
     st.write("")
     if desc_text: st.markdown(f'<div style="background-color: #eaf2f8; padding: 15px; border-radius: 8px; border-left: 5px solid #3498db; margin-bottom: 15px; color: #2c3e50; font-size: 15px; line-height: 1.6;">🎬 <strong>[화면 설명]</strong><br>{desc_text}</div>', unsafe_allow_html=True)
 
+    # 💡 [핵심] 다음 문제로 넘어갈 때 클릭 상태도 함께 초기화합니다.
     def go_next(is_correct):
         save_history(q_text, is_correct); st.session_state.user_answers[st.session_state.index] = is_correct 
         if is_correct and st.session_state.is_review_mode: remove_from_incorrect_note(q_text)
         elif not is_correct and not st.session_state.is_review_mode: save_incorrect_answer(row)
-        st.session_state.index += 1; st.session_state.show_answer = False; st.rerun()
+        st.session_state.index += 1; 
+        st.session_state.show_answer = False
+        st.session_state.clicked_opt = None 
+        st.rerun()
 
-    if not st.session_state.show_answer:
+    # 💡 [UI 변경점 1] 아직 아무 보기 항목도 클릭하지 않았을 때 (기본 버튼 상태)
+    if not st.session_state.show_answer and st.session_state.clicked_opt is None:
         if '객관식보기' in df.columns and pd.notna(row.get('객관식보기')):
             opts = [opt.strip() for opt in str(row['객관식보기']).split('\n') if opt.strip()]
             for i, opt in enumerate(opts):
-                if st.button(opt, key=f"opt_{i}", use_container_width=True):
+                if st.button(opt, key=f"opt_{i}_{idx}", use_container_width=True):
                     ans_val = str(row.get('정답', '')).strip().replace(".0", "")
-                    if str(i+1) == ans_val: st.toast("⭕ 정답!"); time.sleep(0.5); go_next(True)
-                    else: st.session_state.show_answer = True; st.rerun()
+                    st.session_state.clicked_opt = i # 몇 번을 클릭했는지 저장
+                    if str(i+1) == ans_val:
+                        st.toast("🎉 정답!")
+                    else:
+                        st.session_state.show_answer = True # 틀렸으면 해설창 열기
+                    st.rerun() # 클릭 즉시 화면을 새로고침해서 컬러 박스로 바꿈
         else:
-            if st.button("👀 정답 및 해설 보기", type="primary", use_container_width=True): st.session_state.show_answer = True; st.rerun()
+            # 주관식/실기 시험일 경우
+            if st.button("👀 정답 및 해설 보기", type="primary", use_container_width=True): 
+                st.session_state.show_answer = True
+                st.rerun()
 
+    # 💡 [UI 변경점 2] 보기 항목을 클릭했을 때 (컬러 박스로 변경됨)
+    if st.session_state.clicked_opt is not None:
+        opts = [opt.strip() for opt in str(row['객관식보기']).split('\n') if opt.strip()]
+        ans_val = str(row.get('정답', '')).strip().replace(".0", "")
+        clicked_index = st.session_state.clicked_opt
+        is_correct = (str(clicked_index + 1) == ans_val)
+
+        st.write("") # 간격 띄우기
+        for i, opt in enumerate(opts):
+            is_this_opt_correct = (str(i + 1) == ans_val)
+            
+            # 정답인 항목은 초록색(✅)으로 표시
+            if is_this_opt_correct:
+                st.markdown(f'<div style="background-color: #e6f4ea; border: 2px solid #28a745; color: #155724; padding: 12px; border-radius: 8px; margin-bottom: 10px; text-align: center; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">{opt} (✅ 정답)</div>', unsafe_allow_html=True)
+            # 내가 클릭한 항목이 오답일 때는 빨간색(❌)으로 표시
+            elif i == clicked_index and not is_this_opt_correct:
+                st.markdown(f'<div style="background-color: #fce8e6; border: 2px solid #dc3545; color: #721c24; padding: 12px; border-radius: 8px; margin-bottom: 10px; text-align: center; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">{opt} (❌ 오답)</div>', unsafe_allow_html=True)
+            # 나머지 선택하지 않은 항목은 회색으로 연하게 처리
+            else:
+                st.markdown(f'<div style="background-color: #f8f9fa; border: 1px solid #ced4da; color: #6c757d; padding: 12px; border-radius: 8px; margin-bottom: 10px; text-align: center; opacity: 0.6;">{opt}</div>', unsafe_allow_html=True)
+
+        # 정답을 맞혔을 경우 해설 없이 바로 다음 문제로 넘어가는 버튼 표시
+        if is_correct:
+            st.write("")
+            if st.button("다음 문제로 넘어가기 ➔", type="primary", use_container_width=True):
+                go_next(True)
+
+    # 💡 [해설 렌더링 영역] 틀렸을 때나 주관식 채점 시 보여줌
     if st.session_state.show_answer:
         st.divider()
         ans_text = ""
@@ -525,11 +568,20 @@ elif st.session_state.page == 'quiz':
         ans_img_col = next((c for c in ['해설이미지', '해설사진'] if c in df.columns), None)
         ans_imgs_html = get_images_html(row.get(ans_img_col)) if ans_img_col else ""
         st.markdown(f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;"><strong>[정답 및 해설]</strong><br><br>{ans_text if ans_text else "데이터 없음"}{ans_imgs_html}</div><br>', unsafe_allow_html=True)
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("⭕ 맞혔음", type="primary", use_container_width=True): go_next(True)
-        with c2:
-            if st.button("❌ 틀렸음", use_container_width=True): go_next(False)
+        
+        # 객관식에서 틀려서 해설을 본 경우 -> 다음 문제 버튼만 표시
+        if st.session_state.clicked_opt is not None:
+            ans_val = str(row.get('정답', '')).strip().replace(".0", "")
+            is_correct = (str(st.session_state.clicked_opt + 1) == ans_val)
+            if st.button("해설 확인 완료! 다음 문제로 ➔", type="primary", use_container_width=True, key="next_after_expl"):
+                go_next(is_correct)
+        # 주관식/실기 시험이라서 사용자가 직접 맞음/틀림을 체크해야 하는 경우 (기존 호환성 유지)
+        else:
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("⭕ 내 답이 맞았음", type="primary", use_container_width=True): go_next(True)
+            with c2:
+                if st.button("❌ 내 답이 틀렸음", use_container_width=True): go_next(False)
 
 # ==========================================
 # 화면 3: 결과 대시보드 
