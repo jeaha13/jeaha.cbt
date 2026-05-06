@@ -50,9 +50,12 @@ def find_image_path(filename):
     if not filename or filename.lower() == 'nan':
         return None
 
+    # .png를 적든 안 적든 이름표(base_name)만 쏙 빼내는 똑똑한 로직!
     base_name = os.path.splitext(filename)[0]
     extensions = ['', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.PNG', '.JPG', '.JPEG']
-    search_folders = ["사진폴더", "실습형사진폴더"]
+    
+    # 💡 [핵심] 새로 만드신 '소방설비기사필기사진' 폴더 1순위 탐색 추가!
+    search_folders = ["사진폴더", "실습형사진폴더", "소방설비기사필기사진"]
 
     for folder in search_folders:
         if not os.path.exists(folder): continue
@@ -497,20 +500,18 @@ elif st.session_state.page == 'quiz':
     st.write("")
     if desc_text: st.markdown(f'<div style="background-color: #eaf2f8; padding: 15px; border-radius: 8px; border-left: 5px solid #3498db; margin-bottom: 15px; color: #2c3e50; font-size: 15px; line-height: 1.6;">🎬 <strong>[화면 설명]</strong><br>{desc_text}</div>', unsafe_allow_html=True)
 
-    # 💡 [핵심 추가] 객관식 보기 처리 (텍스트 vs 통이미지)
+    # 객관식 보기 처리 (텍스트 vs 통이미지)
     raw_options_text = str(row.get('객관식보기', '')).strip()
     is_image_options = False
     opts_list = []
 
     if raw_options_text and raw_options_text.lower() != 'nan':
-        # 줄바꿈이 없고 이미지 파일을 찾을 수 있다면 통이미지 모드로 전환!
         if '\n' not in raw_options_text and find_image_path(raw_options_text):
             is_image_options = True
             opts_list = ["① 1번 선택", "② 2번 선택", "③ 3번 선택", "④ 4번 선택"]
         else:
             opts_list = [opt.strip() for opt in raw_options_text.split('\n') if opt.strip()]
 
-    # 통이미지 보기일 경우, 문제 텍스트 바로 아래에 이미지 출력
     if is_image_options:
         st.markdown(get_images_html(raw_options_text), unsafe_allow_html=True)
 
