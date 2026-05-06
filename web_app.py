@@ -50,11 +50,8 @@ def find_image_path(filename):
     if not filename or filename.lower() == 'nan':
         return None
 
-    # .png를 적든 안 적든 이름표(base_name)만 쏙 빼내는 똑똑한 로직!
     base_name = os.path.splitext(filename)[0]
     extensions = ['', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.PNG', '.JPG', '.JPEG']
-    
-    # 💡 [핵심] 새로 만드신 '소방설비기사필기사진' 폴더 1순위 탐색 추가!
     search_folders = ["사진폴더", "실습형사진폴더", "소방설비기사필기사진"]
 
     for folder in search_folders:
@@ -508,7 +505,8 @@ elif st.session_state.page == 'quiz':
     if raw_options_text and raw_options_text.lower() != 'nan':
         if '\n' not in raw_options_text and find_image_path(raw_options_text):
             is_image_options = True
-            opts_list = ["① 1번 선택", "② 2번 선택", "③ 3번 선택", "④ 4번 선택"]
+            # 💡 [버튼 심플화] 통이미지일 때는 동그라미 번호만 출력합니다!
+            opts_list = ["①", "②", "③", "④"] 
         else:
             opts_list = [opt.strip() for opt in raw_options_text.split('\n') if opt.strip()]
 
