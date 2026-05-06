@@ -416,8 +416,8 @@ elif st.session_state.page == 'quiz':
     q_text = row['문제']
     point = get_question_point(df, idx)
     
-    # 상단 네비게이션
-    c_prev, c_nav, c_mark, c_home = st.columns([1.5, 3, 1.5, 1.5])
+    # 💡 [핵심] 상단 네비게이션에 [🏁 제출] 버튼 추가!
+    c_prev, c_nav, c_mark, c_submit, c_home = st.columns([1.2, 2.5, 1.2, 1.2, 1.2])
     with c_prev:
         if idx > 0:
             if st.button("◀ 이전", use_container_width=True): st.session_state.index -= 1; st.session_state.show_answer = False; st.session_state.clicked_opt = None; st.rerun()
@@ -429,8 +429,12 @@ elif st.session_state.page == 'quiz':
     with c_mark:
         bookmarked = is_bookmarked(q_text)
         if st.button("🌟 저장" if bookmarked else "⭐ 저장", type="primary" if bookmarked else "secondary", use_container_width=True): toggle_bookmark(row); st.rerun() 
+    with c_submit:
+        # 이 버튼을 누르면 즉시 채점(결과) 화면으로 이동합니다!
+        if st.button("🏁 제출", use_container_width=True): 
+            st.session_state.page = 'result'; st.rerun()
     with c_home:
-        if st.button("🏠", use_container_width=True): st.session_state.page = 'selection'; st.rerun()
+        if st.button("🏠 홈", use_container_width=True): st.session_state.page = 'selection'; st.rerun()
             
     prefix = "[오답]" if st.session_state.is_review_mode else "[⭐]" if st.session_state.is_bookmark_mode else "[모의]" if st.session_state.is_mock_exam else "[연습]"
     st.progress((idx) / len(df))
@@ -505,7 +509,6 @@ elif st.session_state.page == 'quiz':
     if raw_options_text and raw_options_text.lower() != 'nan':
         if '\n' not in raw_options_text and find_image_path(raw_options_text):
             is_image_options = True
-            # 💡 [버튼 심플화] 통이미지일 때는 동그라미 번호만 출력합니다!
             opts_list = ["①", "②", "③", "④"] 
         else:
             opts_list = [opt.strip() for opt in raw_options_text.split('\n') if opt.strip()]
@@ -601,8 +604,10 @@ elif st.session_state.page == 'quiz':
 elif st.session_state.page == 'result':
     st.title("🎉 학습 완료!"); st.balloons()
     correct = sum(1 for v in st.session_state.user_answers.values() if v)
-    incorrect = sum(1 for v in st.session_state.user_answers.values() if not v)
     total_q = len(st.session_state.df)
+    # 💡 [핵심] 제출(스킵) 시 풀지 않은 문제는 틀린 것으로 간주되도록 업데이트!
+    incorrect = total_q - correct 
+    
     mins, secs = divmod(int(time.time() - st.session_state.start_time), 60)
     st.subheader(f"⏱️ 소요 시간: {mins}분 {secs}초"); st.write("---")
     
@@ -617,11 +622,54 @@ elif st.session_state.page == 'result':
     else:
         st.markdown(f"### {'⭐ 즐겨찾기' if st.session_state.is_bookmark_mode else '📚 문제 풀이'} 결과")
         if st.session_state.is_mock_exam:
-            final_score = sum(get_question_point(st.session_state.df, i) for i, v in st.session_state.user_answers.items() if v)
-            total_score = st.session_state.total_possible_score
-            st.markdown(f"#### 내 점수: <span style='color:#3498db'>{final_score}점</span> / 총점: {total_score}점", unsafe_allow_html=True)
-            c1, c2, c3 = st.columns(3); c1.metric("🎯 득점률", f"{(final_score/total_score*100):.1f}%" if total_score > 0 else "0.0%"); c2.metric("⭕ 맞음", f"{correct} 개"); c3.metric("❌ 틀림", f"{incorrect} 개")
-            st.progress(min(max(final_score / total_score if total_score > 0 else 0, 0.0), 1.0))
+            if st.session_state.cert_type == "🔥 소방설비기사(전기)" and "필기" in st.session_state.exam_type:
+                subj_names = ["1과목: 소방원론", "2과목: 소방전기회로", "3과목: 소방관계법규", "4과목: 소방전기시설의 구조 및 원리"]
+                subj_correct = [0, 0, 0, 0]
+                subj_total = [0, 0, 0, 0]
+
+                for i in range(total_q):
+                    subj_idx = min(i // 20, 3) 
+                    subj_total[subj_idx] += 1
+                    if st.session_state.user_answers.get(i, False):
+                        subj_correct[subj_idx] += 1
+
+                subj_scores = [int((c / t * 100) if t > 0 else 0) for c, t in zip(subj_correct, subj_total)]
+                avg_score = sum(subj_scores) / len(subj_scores) if len(subj_scores) > 0 else 0
+                
+                is_fail_subj = any(s < 40 for s in subj_scores)
+                is_pass = (avg_score >= 60) and not is_fail_subj
+
+                if is_pass:
+                    st.success(f"🎊 **합격입니다!** (평균 {avg_score:.1f}점)")
+                else:
+                    fail_reason = "과락 발생" if is_fail_subj else "평균 60점 미만"
+                    st.error(f"⚠️ **불합격입니다.** (사유: {fail_reason}, 평균 {avg_score:.1f}점)")
+
+                st.write("")
+                st.markdown("#### 📊 과목별 상세 결과")
+                for i in range(4):
+                    # 만약 시험지가 80문제가 안되어 과목 문제가 아예 없다면 표시 건너뛰기
+                    if subj_total[i] == 0: continue
+                    
+                    score = subj_scores[i]
+                    cor = subj_correct[i]
+                    tot = subj_total[i]
+                    inc = tot - cor
+                    status = "🚨 과락" if score < 40 else "✅ 통과"
+                    
+                    with st.container():
+                        st.markdown(f"**{subj_names[i]}**")
+                        c1, c2, c3 = st.columns([1, 1, 1])
+                        c1.metric("점수", f"{score}점", f"{status}", delta_color="off" if score>=40 else "inverse")
+                        c2.metric("맞음", f"{cor}개")
+                        c3.metric("틀림", f"{inc}개")
+                        st.write("---")
+            else:
+                final_score = sum(get_question_point(st.session_state.df, i) for i, v in st.session_state.user_answers.items() if v)
+                total_score = st.session_state.total_possible_score
+                st.markdown(f"#### 내 점수: <span style='color:#3498db'>{final_score}점</span> / 총점: {total_score}점", unsafe_allow_html=True)
+                c1, c2, c3 = st.columns(3); c1.metric("🎯 득점률", f"{(final_score/total_score*100):.1f}%" if total_score > 0 else "0.0%"); c2.metric("⭕ 맞음", f"{correct} 개"); c3.metric("❌ 틀림", f"{incorrect} 개")
+                st.progress(min(max(final_score / total_score if total_score > 0 else 0, 0.0), 1.0))
         else:
             acc = (correct / total_q * 100) if total_q > 0 else 0
             c1, c2, c3 = st.columns(3); c1.metric("🎯 정답률", f"{acc:.1f}%"); c2.metric("⭕ 맞음", f"{correct} 개"); c3.metric("❌ 틀림", f"{incorrect} 개")
