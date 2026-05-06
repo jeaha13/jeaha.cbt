@@ -497,6 +497,23 @@ elif st.session_state.page == 'quiz':
     st.write("")
     if desc_text: st.markdown(f'<div style="background-color: #eaf2f8; padding: 15px; border-radius: 8px; border-left: 5px solid #3498db; margin-bottom: 15px; color: #2c3e50; font-size: 15px; line-height: 1.6;">🎬 <strong>[화면 설명]</strong><br>{desc_text}</div>', unsafe_allow_html=True)
 
+    # 💡 [핵심 추가] 객관식 보기 처리 (텍스트 vs 통이미지)
+    raw_options_text = str(row.get('객관식보기', '')).strip()
+    is_image_options = False
+    opts_list = []
+
+    if raw_options_text and raw_options_text.lower() != 'nan':
+        # 줄바꿈이 없고 이미지 파일을 찾을 수 있다면 통이미지 모드로 전환!
+        if '\n' not in raw_options_text and find_image_path(raw_options_text):
+            is_image_options = True
+            opts_list = ["① 1번 선택", "② 2번 선택", "③ 3번 선택", "④ 4번 선택"]
+        else:
+            opts_list = [opt.strip() for opt in raw_options_text.split('\n') if opt.strip()]
+
+    # 통이미지 보기일 경우, 문제 텍스트 바로 아래에 이미지 출력
+    if is_image_options:
+        st.markdown(get_images_html(raw_options_text), unsafe_allow_html=True)
+
     def go_next(is_correct):
         save_history(q_text, is_correct); st.session_state.user_answers[st.session_state.index] = is_correct 
         if is_correct and st.session_state.is_review_mode: remove_from_incorrect_note(q_text)
@@ -508,9 +525,8 @@ elif st.session_state.page == 'quiz':
 
     # 객관식 버튼 렌더링
     if not st.session_state.show_answer and st.session_state.clicked_opt is None:
-        if '객관식보기' in df.columns and pd.notna(row.get('객관식보기')):
-            opts = [opt.strip() for opt in str(row['객관식보기']).split('\n') if opt.strip()]
-            for i, opt in enumerate(opts):
+        if '객관식보기' in df.columns and pd.notna(row.get('객관식보기')) and opts_list:
+            for i, opt in enumerate(opts_list):
                 if st.button(opt, key=f"opt_{i}_{idx}", use_container_width=True):
                     ans_val = str(row.get('정답', '')).strip().replace(".0", "")
                     st.session_state.clicked_opt = i 
@@ -526,13 +542,12 @@ elif st.session_state.page == 'quiz':
 
     # 보기 항목 클릭 시 디자인 변경
     if st.session_state.clicked_opt is not None:
-        opts = [opt.strip() for opt in str(row['객관식보기']).split('\n') if opt.strip()]
         ans_val = str(row.get('정답', '')).strip().replace(".0", "")
         clicked_index = st.session_state.clicked_opt
         is_correct = (str(clicked_index + 1) == ans_val)
 
         st.write("") 
-        for i, opt in enumerate(opts):
+        for i, opt in enumerate(opts_list):
             is_this_opt_correct = (str(i + 1) == ans_val)
             
             if is_this_opt_correct:
@@ -547,12 +562,10 @@ elif st.session_state.page == 'quiz':
             if st.button("다음 문제로 넘어가기 ➔", type="primary", use_container_width=True):
                 go_next(True)
 
-    # 💡 [핵심 변경점] 해설 렌더링 영역: 중복되는 '정답 번호' 숨기기 및 불필요한 박스 제거
     if st.session_state.show_answer:
         st.divider()
         ans_text = ""
         for c in ['정답', '답', '해설', '설명']:
-            # 객관식 필기시험을 풀고 있다면, '정답'이나 '답' 열의 데이터는 가져오지 않음 (이미 버튼색으로 보여줬으므로)
             if st.session_state.clicked_opt is not None and c in ['정답', '답']:
                 continue
                 
@@ -565,12 +578,10 @@ elif st.session_state.page == 'quiz':
         ans_img_col = next((c for c in ['해설이미지', '해설사진'] if c in df.columns), None)
         ans_imgs_html = get_images_html(row.get(ans_img_col)) if ans_img_col else ""
         
-        # '해설' 내용이나 '해설사진'이 존재할 때만 박스를 예쁘게 그려줌 (텅 빈 박스 방지)
         if ans_text or ans_imgs_html:
             box_title = "<strong>[해설]</strong><br><br>" if st.session_state.clicked_opt is not None else "<strong>[정답 및 해설]</strong><br><br>"
             st.markdown(f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; line-height: 1.6;">{box_title}{ans_text}{ans_imgs_html}</div><br>', unsafe_allow_html=True)
         
-        # 객관식에서 틀렸을 경우 나타나는 버튼 (해설 유무에 따라 버튼 텍스트가 달라짐)
         if st.session_state.clicked_opt is not None:
             ans_val = str(row.get('정답', '')).strip().replace(".0", "")
             is_correct = (str(st.session_state.clicked_opt + 1) == ans_val)
@@ -578,13 +589,12 @@ elif st.session_state.page == 'quiz':
             btn_text = "해설 확인 완료! 다음 문제로 ➔" if (ans_text or ans_imgs_html) else "다음 문제로 ➔"
             if st.button(btn_text, type="primary", use_container_width=True, key="next_after_expl"):
                 go_next(is_correct)
-        # 산업안전기사처럼 주관식/실기 시험인 경우
         else:
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("⭕ 내 답이 맞았음", type="primary", use_container_width=True): go_next(True)
+                if st.button("⭕ 정답", type="primary", use_container_width=True): go_next(True)
             with c2:
-                if st.button("❌ 내 답이 틀렸음", use_container_width=True): go_next(False)
+                if st.button("❌ 오답", use_container_width=True): go_next(False)
 
 # ==========================================
 # 화면 3: 결과 대시보드 
