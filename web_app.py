@@ -40,6 +40,8 @@ st.markdown("""
         border-radius: 8px;
         box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
     }
+    /* 바둑판 버튼 여백 최적화 */
+    .stButton button { margin-bottom: 0px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -92,7 +94,7 @@ def get_images_html(img_names_raw):
     return img_html
 
 # ==========================================
-# ⚙️ 데이터 및 점수 관리 도우미
+# ⚙️ 데이터 및 방명록 관리 도우미
 # ==========================================
 def load_guestbook():
     if os.path.exists(GUESTBOOK_FILE):
@@ -217,7 +219,7 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark, cert_type=None, exam_ty
     st.session_state.is_bookmark_mode = is_bookmark
     st.session_state.cert_type = cert_type
     st.session_state.exam_type = exam_type
-    st.session_state.study_mode = study_mode # 💡 모드 저장 추가
+    st.session_state.study_mode = study_mode
     st.session_state.start_time = time.time()
     st.session_state.page = 'quiz'
 
@@ -304,7 +306,6 @@ elif st.session_state.page == 'selection':
     st.write("")
     cert_type = st.radio("📚 자격증 선택", ["🚧 산업안전기사", "🔥 소방설비기사(전기)"], horizontal=True)
     
-    # 소방설비기사 전용 상세 설정 UI
     if "소방설비기사" in cert_type:
         st.markdown("---")
         col_m1, col_m2 = st.columns(2)
@@ -316,7 +317,7 @@ elif st.session_state.page == 'selection':
     else:
         exam_type = st.radio("📝 시험 유형 선택", ["✍️ 필답형 (주관식/서술)", "💻 작업형 (동영상/도면)"], horizontal=True)
         target_file = FILE_PILDAP if "필답형" in exam_type else FILE_JAKUP
-        study_mode = "💡 문제풀이 모드" # 산업안전은 기본 문제풀이
+        study_mode = "💡 문제풀이 모드"
         target_subject = "전체"
 
     if not os.path.exists(target_file):
@@ -331,7 +332,6 @@ elif st.session_state.page == 'selection':
         df.columns = df.columns.str.replace(' ', '')
         if '출처' not in df.columns: df['출처'] = target_sheet 
         
-        # 💡 [핵심] 과목별 필터링 로직
         if "소방설비기사" in current_cert:
             if "1과목" in subject: df = df.iloc[0:20]
             elif "2과목" in subject: df = df.iloc[20:40]
@@ -384,27 +384,45 @@ elif st.session_state.page == 'quiz':
     if idx >= len(df): st.session_state.page = 'result'; st.rerun()
     row = df.iloc[idx]; q_text = row['문제']
     
-    # 상단 네비게이션
-    c_prev, c_nav, c_mark, c_submit, c_home = st.columns([1, 2.5, 1, 1.2, 1])
+    # 💡 [UI 업그레이드] 깔끔해진 상단 네비게이션
+    c_prev, c_mark, c_submit, c_home = st.columns([1, 1, 1.5, 1])
     with c_prev:
-        if st.button("◀", use_container_width=True): st.session_state.index -= 1; st.session_state.show_answer = False; st.session_state.clicked_opt = None; st.rerun()
-    with c_nav:
-        q_list = [f"{i+1}번 문제로 점프" for i in range(len(df))]
-        # 💡 [핵심] 원하는 번호로 한 번에 가기 기능
-        jump_select = st.selectbox("점프", q_list, index=idx, label_visibility="collapsed")
-        if q_list.index(jump_select) != idx: 
-            st.session_state.index = q_list.index(jump_select); st.session_state.show_answer = False; st.session_state.clicked_opt = None; st.rerun()
+        if st.button("◀ 이전", use_container_width=True): 
+            st.session_state.index = max(0, idx - 1)
+            st.session_state.show_answer = False; st.session_state.clicked_opt = None; st.rerun()
     with c_mark:
         bookmarked = is_bookmarked(q_text)
-        if st.button("🌟" if bookmarked else "⭐", use_container_width=True): toggle_bookmark(row); st.rerun() 
+        if st.button("🌟 저장" if bookmarked else "⭐ 저장", type="primary" if bookmarked else "secondary", use_container_width=True): toggle_bookmark(row); st.rerun() 
     with c_submit:
-        if st.button("🏁 제출", use_container_width=True): st.session_state.page = 'result'; st.rerun()
+        if st.button("🏁 시험 제출", use_container_width=True): st.session_state.page = 'result'; st.rerun()
     with c_home:
-        if st.button("🏠", use_container_width=True): st.session_state.page = 'selection'; st.rerun()
+        if st.button("🏠 홈", use_container_width=True): st.session_state.page = 'selection'; st.rerun()
             
-    st.progress((idx) / len(df))
+    st.progress((idx + 1) / len(df))
     
-    # 과목 배지 생성 (원본 문제 번호 유지 로직)
+    # 💡 [핵심 추가] 클릭형 바둑판 네비게이션 (펼쳐보기)
+    with st.expander(f"🗺️ 전체 문제 이동판 펼쳐보기 (현재 {idx+1}/{len(df)}번)"):
+        # 모바일에서도 예쁘게 보이도록 8칸 분할
+        cols = st.columns(8) 
+        for i in range(len(df)):
+            ans_status = st.session_state.user_answers.get(i)
+            
+            # 상태별 이모지 설정
+            icon = "⬜" # 안 푼 문제
+            if ans_status is True: icon = "✅"
+            elif ans_status is False: icon = "❌"
+            elif st.session_state.study_mode == "⏱️ 실제시험 모드" and ans_status is not None: icon = "🟦" # 답을 체크한 상태
+            
+            if i == idx: icon = "📍" # 현재 보고 있는 위치
+            
+            # 버튼 텍스트 구성 및 렌더링
+            if cols[i % 8].button(f"{icon} {i+1}", key=f"grid_btn_{i}", use_container_width=True):
+                st.session_state.index = i
+                st.session_state.show_answer = False
+                st.session_state.clicked_opt = None
+                st.rerun()
+                
+    # 과목 배지 생성
     subject_badge = ""
     if st.session_state.cert_type == "🔥 소방설비기사(전기)" and "필기" in st.session_state.exam_type:
         orig_q_num = int(re.search(r'\d+', str(row['문제'])).group()) if re.search(r'\d+', str(row['문제'])) else idx+1
@@ -414,9 +432,9 @@ elif st.session_state.page == 'quiz':
         else: subj = "4과목: 소방전기시설의 구조 및 원리"
         subject_badge = f"<span style='background-color:#e74c3c; color:white; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:bold;'>{subj}</span>"
         
-    st.markdown(f"{subject_badge}<h3 style='margin-top:5px;'>{q_text}</h3>", unsafe_allow_html=True)
+    st.markdown(f"<br>{subject_badge}<h3 style='margin-top:5px;'>{q_text}</h3>", unsafe_allow_html=True)
     
-    # 보기 처리
+    # 보기 및 이미지 처리
     raw_opts = str(row.get('객관식보기', '')).strip()
     is_img_opts = False; opts_list = []
     if raw_opts and raw_opts.lower() != 'nan':
@@ -429,7 +447,6 @@ elif st.session_state.page == 'quiz':
     img_col = next((c for c in ['문제이미지', '사진', '그림'] if c in df.columns), None)
     if img_col: st.markdown(get_images_html(row.get(img_col)), unsafe_allow_html=True)
 
-    # 💡 [핵심] 실제시험 모드 vs 문제풀이 모드 로직 분리
     ans_val = str(row.get('정답', '')).strip().replace(".0", "")
     
     def go_next(is_correct):
@@ -438,9 +455,8 @@ elif st.session_state.page == 'quiz':
         elif not is_correct and not st.session_state.is_review_mode: save_incorrect_answer(row)
         st.session_state.index += 1; st.session_state.show_answer = False; st.session_state.clicked_opt = None; st.rerun()
 
-    # 1. 보기 클릭 로직
+    # 객관식 클릭 로직 분기
     if st.session_state.study_mode == "💡 문제풀이 모드":
-        # 기존 문제풀이 모드 로직
         if st.session_state.clicked_opt is None and not st.session_state.show_answer:
             if opts_list:
                 for i, opt in enumerate(opts_list):
@@ -461,13 +477,11 @@ elif st.session_state.page == 'quiz':
                 if st.button("다음 문제로 ➔", type="primary", use_container_width=True): go_next(True)
     
     else: # ⏱️ 실제시험 모드
-        # 내가 고른 답이 있는지 확인
         current_choice = st.session_state.user_answers.get(idx)
         for i, opt in enumerate(opts_list):
-            # 내가 이미 고른 답이면 파란색으로 표시
             is_selected = (current_choice == i+1)
             if st.button(opt, key=f"exam_opt_{i}_{idx}", use_container_width=True, type="primary" if is_selected else "secondary"):
-                st.session_state.user_answers[idx] = i+1 # 답안 저장 (1, 2, 3, 4)
+                st.session_state.user_answers[idx] = i+1
                 st.rerun()
         
         c_prev_btn, c_next_btn = st.columns(2)
@@ -476,7 +490,7 @@ elif st.session_state.page == 'quiz':
         with c_next_btn:
             if st.button("다음 문제", type="primary", use_container_width=True): st.session_state.index += 1; st.rerun()
 
-    # 해설 영역 (문제풀이 모드이거나 산업안전 실기일 때만)
+    # 해설 영역
     if st.session_state.show_answer:
         st.divider()
         ans_text = ""
@@ -503,7 +517,6 @@ elif st.session_state.page == 'quiz':
 elif st.session_state.page == 'result':
     st.title("🎉 학습 완료!"); st.balloons()
     
-    # 💡 [핵심] 실제시험 모드 채점 로직
     if st.session_state.study_mode == "⏱️ 실제시험 모드":
         correct_count = 0
         for i in range(len(st.session_state.df)):
@@ -511,7 +524,7 @@ elif st.session_state.page == 'result':
             actual_ans = str(st.session_state.df.iloc[i].get('정답', '')).strip().replace(".0", "")
             if str(user_pick) == actual_ans:
                 correct_count += 1
-                st.session_state.user_answers[i] = True # 채점 완료 상태로 변경
+                st.session_state.user_answers[i] = True 
             else:
                 st.session_state.user_answers[i] = False
                 save_incorrect_answer(st.session_state.df.iloc[i])
@@ -524,14 +537,11 @@ elif st.session_state.page == 'result':
     st.subheader(f"⏱️ 소요 시간: {mins}분 {secs}초")
     
     if st.session_state.cert_type == "🔥 소방설비기사(전기)":
-        # 과목별 채점
         subj_names = ["1과목: 소방원론", "2과목: 소방전기회로", "3과목: 소방관계법규", "4과목: 소방전기시설의 구조 및 원리"]
         subj_correct = [0, 0, 0, 0]; subj_total = [0, 0, 0, 0]
         
-        # 필터링 여부와 상관없이 실제 문제 번호를 파악하여 과목 배분
         for i in range(total_q):
             row = st.session_state.df.iloc[i]
-            # 문제 텍스트에서 숫자만 추출 (예: "21. 다음 중...")
             match = re.search(r'\d+', str(row['문제']))
             orig_q_num = int(match.group()) if match else i+1
             s_idx = min((orig_q_num - 1) // 20, 3)
