@@ -22,9 +22,6 @@ FILE_SOBANG_SILGI = "소방설비기사_실기_문제은행.xlsx"
 STATS_FILE = "stats.json" 
 GUESTBOOK_FILE = "guestbook.json"
 
-# 💡 [핵심] 펭귄주인장의 고정 IP 목록
-MY_IPS = ["192.168.1.240", "192.168.0.171"]
-
 # ==========================================
 # ⚙️ 똑똑한 이미지 크기 조절
 # ==========================================
@@ -93,7 +90,7 @@ def get_images_html(img_names_raw):
     return img_html
 
 # ==========================================
-# ⚙️ 데이터 및 엄격한 IP 조회수 관리 로직
+# ⚙️ 데이터 및 조회수(IP 중복방지) 관리
 # ==========================================
 def load_guestbook():
     if os.path.exists(GUESTBOOK_FILE):
@@ -134,6 +131,7 @@ def load_stats():
 
 def increment_visits(ip):
     stats = load_stats()
+    # 💡 오늘 처음 온 IP일 때만 조회수 +1 (새로고침 무한 방어!)
     if ip not in stats["today_ips"]:
         stats["today_ips"].append(ip)
         stats["total_visits"] += 1
@@ -237,28 +235,21 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark, cert_type=None, exam_ty
     st.session_state.page = 'quiz'
 
 # ==========================================
-# 🛠️ 세션 상태 초기화 (관리자 자동 인식 완벽 수정)
+# 🛠️ 세션 상태 초기화
 # ==========================================
 client_ip = get_client_ip()
 
-# 💡 [버그 수정] is_admin과 nickname을 명시적으로 초기화 목록에 추가했습니다!
 keys_to_init = [
     'page', 'df', 'index', 'total_possible_score', 'user_answers',
     'show_answer', 'start_time', 'is_review_mode', 'is_bookmark_mode', 
     'is_mock_exam', 'has_visited', 'cert_type', 'exam_type',
-    'clicked_opt', 'study_mode', 'is_admin', 'nickname'
+    'clicked_opt', 'study_mode', 'nickname'
 ]
 for key in keys_to_init:
     if key not in st.session_state: st.session_state[key] = None
 
-# 매 접속/새로고침 마다 IP를 확인해서 권한을 갱신합니다.
-if client_ip in MY_IPS:
-    st.session_state.nickname = "펭귄주인장"
-    st.session_state.is_admin = True
-else:
-    if st.session_state.nickname is None or st.session_state.nickname == "펭귄주인장":
-        st.session_state.nickname = client_ip
-    st.session_state.is_admin = False
+if st.session_state.nickname is None:
+    st.session_state.nickname = client_ip
 
 if not isinstance(st.session_state.get('history'), dict):
     st.session_state.history = {}
@@ -270,10 +261,8 @@ if st.session_state.page is None or st.session_state.page == 'login':
 
 if st.session_state.has_visited is None: st.session_state.has_visited = False
 if not st.session_state.has_visited:
-    if not st.session_state.is_admin:
-        increment_visits(client_ip)
+    increment_visits(client_ip)
     st.session_state.has_visited = True
-
 
 # ==========================================
 # ⭐ 화면 1: 단원 선택 화면
@@ -281,20 +270,19 @@ if not st.session_state.has_visited:
 if st.session_state.page == 'selection':
     st.markdown("<h1 style='text-align: center;'>🎓 자격증 문제풀이 CBT</h1>", unsafe_allow_html=True)
     
+    # 💡 [문구 업데이트] 더 깔끔하고 진정성 있는 배너
     st.markdown("""
     <div style="background-color: #f8f9fa; padding: 18px; border-radius: 12px; border-left: 6px solid #3498db; margin-bottom: 25px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
-        <strong style="color: #2c3e50; font-size: 16px;">🔥 합격 기운 팍팍! 펭귄주인장의 비밀 노트</strong><br>
-        <span style="color: #555; font-size: 14px;">본 사이트는 개발자가 자격증을 직접 공부하기 위해 한땀한땀 만든 <b>개인 학습용 플랫폼</b>입니다.<br>더 많은 합격 비법과 자료가 궁금하시다면 언제든 놀러오세요!</span><br>
-        👉 <a href="https://blog.naver.com/jeaha_" target="_blank" style="color: #2980b9; font-weight: bold; text-decoration: none;">블로그 구경가기 (클릭)</a>
+        <strong style="color: #2c3e50; font-size: 16px;">🎯 여러분의 합격을 진심으로 기원합니다!</strong><br>
+        <span style="color: #555; font-size: 14px;">본 사이트는 개발자가 자격증을 직접 공부하기 위해 제작한 <b>개인 학습용 플랫폼</b>입니다.<br>관련 학습 자료나 소통을 원하시면 언제든 블로그에 방문해 주세요.</span><br>
+        👉 <a href="https://blog.naver.com/jeaha_" target="_blank" style="color: #2980b9; font-weight: bold; text-decoration: none;">펭귄주인장 블로그 방문하기</a>
     </div>
     """, unsafe_allow_html=True)
     
     stats = load_stats()
-    admin_tag = "👑 펭귄주인장 접속중" if st.session_state.is_admin else f"접속 기기 IP: {st.session_state.nickname}"
-    
     st.markdown(f"""
     <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom: 1px solid #eee; padding-bottom: 10px;'>
-        <div style='color:gray; font-size:13px;'>{admin_tag}</div>
+        <div style='color:gray; font-size:13px;'>접속 기기 IP: {st.session_state.nickname}</div>
         <div style='font-size:14px; font-weight:bold; color:#2c3e50;'>
             📈 Today <span style='color:#e74c3c;'>{stats['today_visits']}</span> / Total <span style='color:#3498db;'>{stats['total_visits']}</span>
         </div>
@@ -376,7 +364,8 @@ if st.session_state.page == 'selection':
         new_msg = st.text_input("방명록 작성", placeholder="응원 한마디 부탁드려요!", label_visibility="collapsed")
         if st.button("✏️ 남기기", use_container_width=True):
             if new_msg.strip():
-                writer_name = "👑 펭귄주인장" if st.session_state.is_admin else f"익명({st.session_state.nickname[:5]})"
+                # 💡 모두 동등하게 익명 IP로 작성되도록 수정
+                writer_name = f"익명({st.session_state.nickname[:5]})"
                 entries.append({"name": writer_name, "msg": new_msg.strip(), "time": datetime.datetime.now().strftime("%m-%d %H:%M")})
                 save_guestbook(entries); st.rerun()
 
@@ -605,7 +594,6 @@ elif st.session_state.page == 'result':
     st.write("---")
     if st.button("🏠 홈으로 돌아가기", use_container_width=True): st.session_state.page = 'selection'; st.rerun()
 
-# 💡 [블로그 링크 적용] 하단 저작권 문구
 st.markdown("""
     <br><br><br>
     <p style='text-align: center; color: gray; font-size: 11px;'>
