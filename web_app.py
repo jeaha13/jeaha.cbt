@@ -22,6 +22,9 @@ FILE_SOBANG_SILGI = "소방설비기사_실기_문제은행.xlsx"
 STATS_FILE = "stats.json" 
 GUESTBOOK_FILE = "guestbook.json"
 
+# 💡 [핵심] 펭귄주인장의 고정 IP 목록
+MY_IPS = ["192.168.1.240", "192.168.0.171","192.168.0.127"]
+
 # ==========================================
 # ⚙️ 똑똑한 이미지 크기 조절
 # ==========================================
@@ -90,7 +93,7 @@ def get_images_html(img_names_raw):
     return img_html
 
 # ==========================================
-# ⚙️ 데이터 및 조회수 관리 도우미
+# ⚙️ 데이터 및 엄격한 IP 조회수 관리 로직
 # ==========================================
 def load_guestbook():
     if os.path.exists(GUESTBOOK_FILE):
@@ -112,10 +115,9 @@ def get_client_ip():
     safe_ip = "".join(c for c in ip if c.isalnum() or c in ".-_")
     return safe_ip if safe_ip else "Guest"
 
-# 💡 [핵심] 오늘 조회수와 총 조회수를 함께 관리하는 로직
 def load_stats():
     today_str = datetime.date.today().strftime("%Y-%m-%d")
-    default_stats = {"total_visits": 0, "today_visits": 0, "last_date": today_str}
+    default_stats = {"total_visits": 0, "today_visits": 0, "last_date": today_str, "today_ips": []}
     if os.path.exists(STATS_FILE):
         try:
             with open(STATS_FILE, 'r', encoding='utf-8') as f: 
@@ -123,15 +125,21 @@ def load_stats():
                 if stats.get("last_date") != today_str:
                     stats["today_visits"] = 0
                     stats["last_date"] = today_str
+                    stats["today_ips"] = []
+                if "today_ips" not in stats:
+                    stats["today_ips"] = []
                 return stats
         except: return default_stats
     return default_stats
 
-def increment_visits():
+def increment_visits(ip):
     stats = load_stats()
-    stats["total_visits"] += 1
-    stats["today_visits"] += 1
-    with open(STATS_FILE, 'w', encoding='utf-8') as f: json.dump(stats, f)
+    if ip not in stats["today_ips"]:
+        stats["today_ips"].append(ip)
+        stats["total_visits"] += 1
+        stats["today_visits"] += 1
+        with open(STATS_FILE, 'w', encoding='utf-8') as f: 
+            json.dump(stats, f, ensure_ascii=False, indent=2)
 
 def load_history():
     history_file = f"{st.session_state.nickname}_학습기록.json"
@@ -229,8 +237,10 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark, cert_type=None, exam_ty
     st.session_state.page = 'quiz'
 
 # ==========================================
-# 🛠️ 세션 상태 초기화
+# 🛠️ 세션 상태 초기화 (관리자 자동 인식)
 # ==========================================
+client_ip = get_client_ip()
+
 keys_to_init = [
     'page', 'df', 'index', 'total_possible_score', 'user_answers',
     'show_answer', 'start_time', 'is_review_mode', 'is_bookmark_mode', 
@@ -241,7 +251,13 @@ for key in keys_to_init:
     if key not in st.session_state: st.session_state[key] = None
 
 if 'nickname' not in st.session_state or st.session_state.nickname is None:
-    st.session_state.nickname = get_client_ip()
+    if client_ip in MY_IPS:
+        st.session_state.nickname = "펭귄주인장"
+        st.session_state.is_admin = True
+    else:
+        st.session_state.nickname = client_ip
+        st.session_state.is_admin = False
+
 if not isinstance(st.session_state.get('history'), dict):
     st.session_state.history = {}
 if st.session_state.user_answers is None: st.session_state.user_answers = {}
@@ -252,7 +268,8 @@ if st.session_state.page is None or st.session_state.page == 'login':
 
 if st.session_state.has_visited is None: st.session_state.has_visited = False
 if not st.session_state.has_visited:
-    increment_visits()
+    if not st.session_state.is_admin:
+        increment_visits(client_ip)
     st.session_state.has_visited = True
 
 
@@ -262,20 +279,27 @@ if not st.session_state.has_visited:
 if st.session_state.page == 'selection':
     st.markdown("<h1 style='text-align: center;'>🎓 자격증 문제풀이 CBT</h1>", unsafe_allow_html=True)
     
-    # 💡 [신규 UI] 사이트 목적 및 조회수 표시
-    st.info("💡 본 사이트는 개발자가 직접 자격증 공부를 하기 위해 제작한 개인 학습용 플랫폼입니다. 함께 합격해요!")
+    # 💡 [블로그 링크 적용] 메인 배너
+    st.markdown("""
+    <div style="background-color: #f8f9fa; padding: 18px; border-radius: 12px; border-left: 6px solid #3498db; margin-bottom: 25px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+        <strong style="color: #2c3e50; font-size: 16px;">🔥 합격 기운 팍팍! 펭귄주인장의 비밀 노트</strong><br>
+        <span style="color: #555; font-size: 14px;">본 사이트는 개발자가 자격증을 직접 공부하기 위해 한땀한땀 만든 <b>개인 학습용 플랫폼</b>입니다.<br>더 많은 합격 비법과 자료가 궁금하시다면 언제든 놀러오세요!</span><br>
+        👉 <a href="https://blog.naver.com/jeaha_" target="_blank" style="color: #2980b9; font-weight: bold; text-decoration: none;">블로그 구경가기 (클릭)</a>
+    </div>
+    """, unsafe_allow_html=True)
     
     stats = load_stats()
+    admin_tag = "👑 펭귄주인장 접속중" if st.session_state.is_admin else f"접속 기기 IP: {st.session_state.nickname}"
+    
     st.markdown(f"""
-    <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;'>
-        <div style='color:gray; font-size:14px;'>접속 기기 IP: {st.session_state.nickname}</div>
+    <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom: 1px solid #eee; padding-bottom: 10px;'>
+        <div style='color:gray; font-size:13px;'>{admin_tag}</div>
         <div style='font-size:14px; font-weight:bold; color:#2c3e50;'>
             📈 Today <span style='color:#e74c3c;'>{stats['today_visits']}</span> / Total <span style='color:#3498db;'>{stats['total_visits']}</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
-    st.write("---")
     cert_type = st.radio("📚 자격증 선택", ["🚧 산업안전기사", "🔥 소방설비기사(전기)"], horizontal=True)
     
     if "소방설비기사" in cert_type:
@@ -351,7 +375,8 @@ if st.session_state.page == 'selection':
         new_msg = st.text_input("방명록 작성", placeholder="응원 한마디 부탁드려요!", label_visibility="collapsed")
         if st.button("✏️ 남기기", use_container_width=True):
             if new_msg.strip():
-                entries.append({"name": f"익명({st.session_state.nickname[:5]})", "msg": new_msg.strip(), "time": datetime.datetime.now().strftime("%m-%d %H:%M")})
+                writer_name = "👑 펭귄주인장" if st.session_state.is_admin else f"익명({st.session_state.nickname[:5]})"
+                entries.append({"name": writer_name, "msg": new_msg.strip(), "time": datetime.datetime.now().strftime("%m-%d %H:%M")})
                 save_guestbook(entries); st.rerun()
 
 # ==========================================
@@ -401,7 +426,6 @@ elif st.session_state.page == 'quiz':
         
     st.markdown(f"<br>{subject_badge}<h3 style='margin-top:5px;'>{q_text}</h3>", unsafe_allow_html=True)
     
-    # 보기 처리
     raw_opts = str(row.get('객관식보기', '')).strip()
     is_img_opts = False; opts_list = []
     if raw_opts and raw_opts.lower() != 'nan':
@@ -422,7 +446,6 @@ elif st.session_state.page == 'quiz':
         elif not is_correct and not st.session_state.is_review_mode: save_incorrect_answer(row)
         st.session_state.index += 1; st.session_state.show_answer = False; st.session_state.clicked_opt = None; st.rerun()
 
-    # 객관식 클릭 로직 분기
     if st.session_state.study_mode == "💡 문제풀이 모드":
         if st.session_state.clicked_opt is None and not st.session_state.show_answer:
             if opts_list:
@@ -443,7 +466,7 @@ elif st.session_state.page == 'quiz':
             if str(st.session_state.clicked_opt + 1) == ans_val:
                 if st.button("다음 문제로 ➔", type="primary", use_container_width=True): go_next(True)
     
-    else: # ⏱️ 실제시험 모드
+    else: 
         current_choice = st.session_state.user_answers.get(idx)
         for i, opt in enumerate(opts_list):
             is_selected = (current_choice == i+1)
@@ -457,7 +480,6 @@ elif st.session_state.page == 'quiz':
         with c_next_btn:
             if st.button("다음 문제", type="primary", use_container_width=True): st.session_state.index += 1; st.rerun()
 
-    # 해설 영역
     if st.session_state.show_answer:
         st.divider()
         ans_text = ""
@@ -582,11 +604,11 @@ elif st.session_state.page == 'result':
     st.write("---")
     if st.button("🏠 홈으로 돌아가기", use_container_width=True): st.session_state.page = 'selection'; st.rerun()
 
-# 💡 [신규 UI] 저작권 문구 및 블로그 하이퍼링크 추가
+# 💡 [블로그 링크 적용] 하단 저작권 문구
 st.markdown("""
     <br><br><br>
-    <p style='text-align: center; color: gray; font-size: 13px;'>
+    <p style='text-align: center; color: gray; font-size: 11px;'>
         © 2026 Designed by [펭귄주인장]. 무단 복제 및 상업적 배포 금지.<br>
-        🌐 <a href='https://blog.naver.com/jeaha_' target='_blank' style='color: #3498db; text-decoration: none; font-weight:bold;'>펭귄주인장 블로그 구경가기</a>
+        🌐 <a href='https://blog.naver.com/jeaha_' target='_blank' style='color: #888; text-decoration: none;'>펭귄주인장 블로그 방문하기</a>
     </p>
 """, unsafe_allow_html=True)
