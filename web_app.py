@@ -23,7 +23,7 @@ STATS_FILE = "stats.json"
 GUESTBOOK_FILE = "guestbook.json"
 
 # 💡 [핵심] 펭귄주인장의 고정 IP 목록
-MY_IPS = ["192.168.1.240", "192.168.0.171","192.168.0.127"]
+MY_IPS = ["192.168.1.240", "192.168.0.171"]
 
 # ==========================================
 # ⚙️ 똑똑한 이미지 크기 조절
@@ -237,26 +237,28 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark, cert_type=None, exam_ty
     st.session_state.page = 'quiz'
 
 # ==========================================
-# 🛠️ 세션 상태 초기화 (관리자 자동 인식)
+# 🛠️ 세션 상태 초기화 (관리자 자동 인식 완벽 수정)
 # ==========================================
 client_ip = get_client_ip()
 
+# 💡 [버그 수정] is_admin과 nickname을 명시적으로 초기화 목록에 추가했습니다!
 keys_to_init = [
     'page', 'df', 'index', 'total_possible_score', 'user_answers',
     'show_answer', 'start_time', 'is_review_mode', 'is_bookmark_mode', 
     'is_mock_exam', 'has_visited', 'cert_type', 'exam_type',
-    'clicked_opt', 'study_mode'
+    'clicked_opt', 'study_mode', 'is_admin', 'nickname'
 ]
 for key in keys_to_init:
     if key not in st.session_state: st.session_state[key] = None
 
-if 'nickname' not in st.session_state or st.session_state.nickname is None:
-    if client_ip in MY_IPS:
-        st.session_state.nickname = "펭귄주인장"
-        st.session_state.is_admin = True
-    else:
+# 매 접속/새로고침 마다 IP를 확인해서 권한을 갱신합니다.
+if client_ip in MY_IPS:
+    st.session_state.nickname = "펭귄주인장"
+    st.session_state.is_admin = True
+else:
+    if st.session_state.nickname is None or st.session_state.nickname == "펭귄주인장":
         st.session_state.nickname = client_ip
-        st.session_state.is_admin = False
+    st.session_state.is_admin = False
 
 if not isinstance(st.session_state.get('history'), dict):
     st.session_state.history = {}
@@ -279,7 +281,6 @@ if not st.session_state.has_visited:
 if st.session_state.page == 'selection':
     st.markdown("<h1 style='text-align: center;'>🎓 자격증 문제풀이 CBT</h1>", unsafe_allow_html=True)
     
-    # 💡 [블로그 링크 적용] 메인 배너
     st.markdown("""
     <div style="background-color: #f8f9fa; padding: 18px; border-radius: 12px; border-left: 6px solid #3498db; margin-bottom: 25px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
         <strong style="color: #2c3e50; font-size: 16px;">🔥 합격 기운 팍팍! 펭귄주인장의 비밀 노트</strong><br>
