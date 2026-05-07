@@ -23,7 +23,7 @@ STATS_FILE = "stats.json"
 GUESTBOOK_FILE = "guestbook.json"
 
 # ==========================================
-# ⚙️ 똑똑한 이미지 크기 조절 (절대 안 짤림!)
+# ⚙️ 똑똑한 이미지 크기 조절
 # ==========================================
 st.markdown("""
 <style>
@@ -40,19 +40,16 @@ st.markdown("""
         border-radius: 8px;
         box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
     }
-    /* 바둑판 버튼 여백 최적화 */
     .stButton button { margin-bottom: 0px; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ⚙️ 확장자 무시 & 통합 폴더 탐색 레이더!
+# ⚙️ 확장자 무시 & 통합 폴더 탐색
 # ==========================================
 def find_image_path(filename):
     filename = str(filename).strip()
-    if not filename or filename.lower() == 'nan':
-        return None
-
+    if not filename or filename.lower() == 'nan': return None
     base_name = os.path.splitext(filename)[0]
     extensions = ['', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.PNG', '.JPG', '.JPEG']
     search_folders = ["사진폴더", "실습형사진폴더", "소방설비기사필기사진"]
@@ -73,7 +70,6 @@ def find_image_path(filename):
             for f in files:
                 if f.lower() == target_name.lower():
                     return os.path.join(root, f)
-                    
     return None
 
 def get_images_html(img_names_raw):
@@ -94,7 +90,7 @@ def get_images_html(img_names_raw):
     return img_html
 
 # ==========================================
-# ⚙️ 데이터 및 방명록 관리 도우미
+# ⚙️ 데이터 및 조회수 관리 도우미
 # ==========================================
 def load_guestbook():
     if os.path.exists(GUESTBOOK_FILE):
@@ -116,16 +112,25 @@ def get_client_ip():
     safe_ip = "".join(c for c in ip if c.isalnum() or c in ".-_")
     return safe_ip if safe_ip else "Guest"
 
+# 💡 [핵심] 오늘 조회수와 총 조회수를 함께 관리하는 로직
 def load_stats():
+    today_str = datetime.date.today().strftime("%Y-%m-%d")
+    default_stats = {"total_visits": 0, "today_visits": 0, "last_date": today_str}
     if os.path.exists(STATS_FILE):
         try:
-            with open(STATS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
-        except: return {"total_visits": 0}
-    return {"total_visits": 0}
+            with open(STATS_FILE, 'r', encoding='utf-8') as f: 
+                stats = json.load(f)
+                if stats.get("last_date") != today_str:
+                    stats["today_visits"] = 0
+                    stats["last_date"] = today_str
+                return stats
+        except: return default_stats
+    return default_stats
 
 def increment_visits():
     stats = load_stats()
-    stats["total_visits"] = stats.get("total_visits", 0) + 1
+    stats["total_visits"] += 1
+    stats["today_visits"] += 1
     with open(STATS_FILE, 'w', encoding='utf-8') as f: json.dump(stats, f)
 
 def load_history():
@@ -229,13 +234,12 @@ def init_quiz_state(df, is_mock, is_review, is_bookmark, cert_type=None, exam_ty
 keys_to_init = [
     'page', 'df', 'index', 'total_possible_score', 'user_answers',
     'show_answer', 'start_time', 'is_review_mode', 'is_bookmark_mode', 
-    'is_mock_exam', 'has_visited', 'is_admin', 'cert_type', 'exam_type',
+    'is_mock_exam', 'has_visited', 'cert_type', 'exam_type',
     'clicked_opt', 'study_mode'
 ]
 for key in keys_to_init:
     if key not in st.session_state: st.session_state[key] = None
 
-if st.session_state.is_admin is None: st.session_state.is_admin = False
 if 'nickname' not in st.session_state or st.session_state.nickname is None:
     st.session_state.nickname = get_client_ip()
 if not isinstance(st.session_state.get('history'), dict):
@@ -251,59 +255,27 @@ if not st.session_state.has_visited:
     increment_visits()
     st.session_state.has_visited = True
 
-# ==========================================
-# 👑 관리자 대시보드
-# ==========================================
-with st.sidebar:
-    st.caption("⚙️ 사이트 설정")
-    admin_pw = st.text_input("관리자 코드", type="password")
-    if admin_pw == "산업안전기사1회!":
-        if not st.session_state.is_admin:
-            st.session_state.is_admin = True
-            st.session_state.nickname = "펭귄주인장"
-            load_history()
-            st.toast("👑 최고 관리자 권한 활성화!")
-        st.success("관리자 모드 접속 중")
-        if st.button("👑 대시보드 열기", use_container_width=True):
-            st.session_state.page = 'admin_dashboard'
-            st.rerun()
-    else:
-        if st.session_state.is_admin:
-            st.session_state.is_admin = False
-            st.session_state.nickname = get_client_ip()
-            load_history()
-
-if st.session_state.page == 'admin_dashboard' and st.session_state.is_admin:
-    st.title(f"👑 펭귄주인장님의 대시보드")
-    stats = load_stats()
-    ip_users = len(glob.glob("*_학습기록.json"))
-    col1, col2 = st.columns(2)
-    with col1: st.metric(label="👁️ 총 누적 문제풀이 횟수", value=f"{stats.get('total_visits', 0)} 회")
-    with col2: st.metric(label="👥 문제를 푼 기기(IP) 수", value=f"{ip_users} 대")
-    st.write("---")
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for f in glob.glob("*.json"): zf.write(f)
-        for f in glob.glob("*_오답노트.xlsx"): zf.write(f)
-        for f in glob.glob("*_즐겨찾기.xlsx"): zf.write(f)
-    st.download_button("📥 모든 데이터 백업 (ZIP)", data=zip_buffer.getvalue(), file_name="cbt_all_backup.zip", mime="application/zip", use_container_width=True, type="primary")
-    uploaded_zip = st.file_uploader("📤 ZIP 파일 복구하기", type="zip")
-    if uploaded_zip is not None:
-        with zipfile.ZipFile(uploaded_zip, "r") as zf:
-            zf.extractall()
-        st.success("✅ 완벽하게 복구되었습니다! F5를 눌러주세요.")
-    if st.button("나도 문제 풀러 가기 🚀", use_container_width=True):
-        st.session_state.page = 'selection'; st.rerun()
 
 # ==========================================
 # ⭐ 화면 1: 단원 선택 화면
 # ==========================================
-elif st.session_state.page == 'selection':
+if st.session_state.page == 'selection':
     st.markdown("<h1 style='text-align: center;'>🎓 자격증 문제풀이 CBT</h1>", unsafe_allow_html=True)
-    if st.session_state.is_admin: st.info("👑 현재 관리자 권한으로 접속 중입니다.")
-    else: st.caption(f"접속 기기 IP: {st.session_state.nickname}")
     
-    st.write("")
+    # 💡 [신규 UI] 사이트 목적 및 조회수 표시
+    st.info("💡 본 사이트는 개발자가 직접 자격증 공부를 하기 위해 제작한 개인 학습용 플랫폼입니다. 함께 합격해요!")
+    
+    stats = load_stats()
+    st.markdown(f"""
+    <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;'>
+        <div style='color:gray; font-size:14px;'>접속 기기 IP: {st.session_state.nickname}</div>
+        <div style='font-size:14px; font-weight:bold; color:#2c3e50;'>
+            📈 Today <span style='color:#e74c3c;'>{stats['today_visits']}</span> / Total <span style='color:#3498db;'>{stats['total_visits']}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.write("---")
     cert_type = st.radio("📚 자격증 선택", ["🚧 산업안전기사", "🔥 소방설비기사(전기)"], horizontal=True)
     
     if "소방설비기사" in cert_type:
@@ -332,6 +304,8 @@ elif st.session_state.page == 'selection':
         df.columns = df.columns.str.replace(' ', '')
         if '출처' not in df.columns: df['출처'] = target_sheet 
         
+        df['원본번호'] = range(1, len(df) + 1)
+        
         if "소방설비기사" in current_cert:
             if "1과목" in subject: df = df.iloc[0:20]
             elif "2과목" in subject: df = df.iloc[20:40]
@@ -356,6 +330,8 @@ elif st.session_state.page == 'selection':
             if not os.path.exists(note_file): st.warning("오답이 없습니다!")
             else:
                 df = pd.read_excel(note_file); df.columns = df.columns.str.replace(' ', '')
+                df['원본번호'] = range(1, len(df) + 1)
+                if is_shuffle: df = df.sample(frac=1).reset_index(drop=True)
                 init_quiz_state(df, False, True, False, "오답노트", "종합", "💡 문제풀이 모드"); st.rerun()
     with col2:
         if st.button("⭐ 내 즐겨찾기 풀기", use_container_width=True):
@@ -363,6 +339,8 @@ elif st.session_state.page == 'selection':
             if not os.path.exists(mark_file): st.warning("즐겨찾기가 없습니다!")
             else:
                 df = pd.read_excel(mark_file); df.columns = df.columns.str.replace(' ', '')
+                df['원본번호'] = range(1, len(df) + 1)
+                if is_shuffle: df = df.sample(frac=1).reset_index(drop=True)
                 init_quiz_state(df, False, False, True, "즐겨찾기", "종합", "💡 문제풀이 모드"); st.rerun()
 
     st.write("---")
@@ -373,7 +351,7 @@ elif st.session_state.page == 'selection':
         new_msg = st.text_input("방명록 작성", placeholder="응원 한마디 부탁드려요!", label_visibility="collapsed")
         if st.button("✏️ 남기기", use_container_width=True):
             if new_msg.strip():
-                entries.append({"name": "👑 펭귄" if st.session_state.is_admin else f"익명({st.session_state.nickname[:5]})", "msg": new_msg.strip(), "time": datetime.datetime.now().strftime("%m-%d %H:%M")})
+                entries.append({"name": f"익명({st.session_state.nickname[:5]})", "msg": new_msg.strip(), "time": datetime.datetime.now().strftime("%m-%d %H:%M")})
                 save_guestbook(entries); st.rerun()
 
 # ==========================================
@@ -384,7 +362,6 @@ elif st.session_state.page == 'quiz':
     if idx >= len(df): st.session_state.page = 'result'; st.rerun()
     row = df.iloc[idx]; q_text = row['문제']
     
-    # 💡 [UI 업그레이드] 깔끔해진 상단 네비게이션
     c_prev, c_mark, c_submit, c_home = st.columns([1, 1, 1.5, 1])
     with c_prev:
         if st.button("◀ 이전", use_container_width=True): 
@@ -400,32 +377,22 @@ elif st.session_state.page == 'quiz':
             
     st.progress((idx + 1) / len(df))
     
-    # 💡 [핵심 추가] 클릭형 바둑판 네비게이션 (펼쳐보기)
     with st.expander(f"🗺️ 전체 문제 이동판 펼쳐보기 (현재 {idx+1}/{len(df)}번)"):
-        # 모바일에서도 예쁘게 보이도록 8칸 분할
         cols = st.columns(8) 
         for i in range(len(df)):
             ans_status = st.session_state.user_answers.get(i)
-            
-            # 상태별 이모지 설정
-            icon = "⬜" # 안 푼 문제
+            icon = "⬜"
             if ans_status is True: icon = "✅"
             elif ans_status is False: icon = "❌"
-            elif st.session_state.study_mode == "⏱️ 실제시험 모드" and ans_status is not None: icon = "🟦" # 답을 체크한 상태
-            
-            if i == idx: icon = "📍" # 현재 보고 있는 위치
-            
-            # 버튼 텍스트 구성 및 렌더링
+            elif st.session_state.study_mode == "⏱️ 실제시험 모드" and ans_status is not None: icon = "🟦"
+            if i == idx: icon = "📍"
             if cols[i % 8].button(f"{icon} {i+1}", key=f"grid_btn_{i}", use_container_width=True):
-                st.session_state.index = i
-                st.session_state.show_answer = False
-                st.session_state.clicked_opt = None
-                st.rerun()
+                st.session_state.index = i; st.session_state.show_answer = False; st.session_state.clicked_opt = None; st.rerun()
                 
-    # 과목 배지 생성
     subject_badge = ""
     if st.session_state.cert_type == "🔥 소방설비기사(전기)" and "필기" in st.session_state.exam_type:
-        orig_q_num = int(re.search(r'\d+', str(row['문제'])).group()) if re.search(r'\d+', str(row['문제'])) else idx+1
+        orig_q_num = int(row.get('원본번호', idx + 1))
+        
         if 1 <= orig_q_num <= 20: subj = "1과목: 소방원론"
         elif 21 <= orig_q_num <= 40: subj = "2과목: 소방전기회로"
         elif 41 <= orig_q_num <= 60: subj = "3과목: 소방관계법규"
@@ -434,7 +401,7 @@ elif st.session_state.page == 'quiz':
         
     st.markdown(f"<br>{subject_badge}<h3 style='margin-top:5px;'>{q_text}</h3>", unsafe_allow_html=True)
     
-    # 보기 및 이미지 처리
+    # 보기 처리
     raw_opts = str(row.get('객관식보기', '')).strip()
     is_img_opts = False; opts_list = []
     if raw_opts and raw_opts.lower() != 'nan':
@@ -517,6 +484,8 @@ elif st.session_state.page == 'quiz':
 elif st.session_state.page == 'result':
     st.title("🎉 학습 완료!"); st.balloons()
     
+    grading_results = {}
+    
     if st.session_state.study_mode == "⏱️ 실제시험 모드":
         correct_count = 0
         for i in range(len(st.session_state.df)):
@@ -524,13 +493,14 @@ elif st.session_state.page == 'result':
             actual_ans = str(st.session_state.df.iloc[i].get('정답', '')).strip().replace(".0", "")
             if str(user_pick) == actual_ans:
                 correct_count += 1
-                st.session_state.user_answers[i] = True 
+                grading_results[i] = True 
             else:
-                st.session_state.user_answers[i] = False
+                grading_results[i] = False
                 save_incorrect_answer(st.session_state.df.iloc[i])
         correct = correct_count
     else:
         correct = sum(1 for v in st.session_state.user_answers.values() if v is True)
+        grading_results = st.session_state.user_answers.copy()
         
     total_q = len(st.session_state.df)
     mins, secs = divmod(int(time.time() - st.session_state.start_time), 60)
@@ -542,15 +512,15 @@ elif st.session_state.page == 'result':
         
         for i in range(total_q):
             row = st.session_state.df.iloc[i]
-            match = re.search(r'\d+', str(row['문제']))
-            orig_q_num = int(match.group()) if match else i+1
+            orig_q_num = int(row.get('원본번호', i + 1))
             s_idx = min((orig_q_num - 1) // 20, 3)
+            
             subj_total[s_idx] += 1
-            if st.session_state.user_answers.get(i) is True: subj_correct[s_idx] += 1
+            if grading_results.get(i) is True: subj_correct[s_idx] += 1
 
         subj_scores = [int((c / t * 100) if t > 0 else 0) for c, t in zip(subj_correct, subj_total)]
         active_subjs = [s for s in subj_scores if s > 0 or any(t > 0 for t in subj_total)]
-        avg_score = sum(subj_scores) / len([t for t in subj_total if t > 0])
+        avg_score = sum(subj_scores) / len([t for t in subj_total if t > 0]) if len([t for t in subj_total if t > 0]) > 0 else 0
         
         is_fail = any(s < 40 for i, s in enumerate(subj_scores) if subj_total[i] > 0)
         is_pass = (avg_score >= 60) and not is_fail
@@ -562,8 +532,61 @@ elif st.session_state.page == 'result':
             if subj_total[i] == 0: continue
             st.write(f"**{subj_names[i]}**: {subj_scores[i]}점 ({subj_correct[i]}/{subj_total[i]}) {'🚨 과락' if subj_scores[i] < 40 else '✅ 통과'}")
     else:
-        st.metric("🎯 정답률", f"{(correct/total_q*100):.1f}%")
+        st.metric("🎯 정답률", f"{(correct/total_q*100):.1f}%" if total_q > 0 else "0.0%")
+    
+    st.write("---")
+
+    if st.session_state.study_mode == "⏱️ 실제시험 모드":
+        st.subheader("📝 상세 채점 결과 및 해설 복습")
+        st.caption("틀린 문제들을 바로 복습하고 내 선택과 정답을 확인하세요!")
         
+        for i in range(total_q):
+            row = st.session_state.df.iloc[i]
+            q_text = row['문제']
+            user_pick = st.session_state.user_answers.get(i, "미선택")
+            actual_ans = str(row.get('정답', '')).strip().replace(".0", "")
+            is_corr = grading_results.get(i, False)
+            
+            icon = "✅" if is_corr else "❌"
+            
+            with st.expander(f"{icon} {i+1}번: {q_text[:35]}..."):
+                st.markdown(f"**{q_text}**")
+                
+                img_col = next((c for c in ['문제이미지', '사진', '그림'] if c in st.session_state.df.columns), None)
+                if img_col and pd.notna(row.get(img_col)):
+                    st.markdown(get_images_html(row.get(img_col)), unsafe_allow_html=True)
+                
+                raw_opts = str(row.get('객관식보기', '')).strip()
+                if raw_opts and raw_opts.lower() != 'nan':
+                    if '\n' not in raw_opts and find_image_path(raw_opts):
+                        st.markdown(get_images_html(raw_opts), unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"<pre style='font-family: inherit; background: transparent; border: none; padding: 0; margin-bottom: 10px;'>{raw_opts}</pre>", unsafe_allow_html=True)
+                
+                st.markdown("---")
+                c1, c2 = st.columns(2)
+                c1.markdown(f"🙋‍♂️ **내 선택:** {user_pick}번" if user_pick != "미선택" else "🙋‍♂️ **내 선택:** 미선택")
+                c2.markdown(f"🎯 **실제 정답:** {actual_ans}번")
+                
+                ans_text = ""
+                for c in ['해설', '설명']:
+                    if c in st.session_state.df.columns and pd.notna(row.get(c)):
+                        ans_text += str(row[c]).strip() + "<br>"
+                ans_img_col = next((c for c in ['해설이미지', '해설사진'] if c in st.session_state.df.columns), None)
+                ans_imgs_html = get_images_html(row.get(ans_img_col)) if ans_img_col else ""
+                
+                if ans_text or ans_imgs_html:
+                    st.info("💡 **해설**")
+                    st.markdown(f"{ans_text}{ans_imgs_html}", unsafe_allow_html=True)
+    
+    st.write("---")
     if st.button("🏠 홈으로 돌아가기", use_container_width=True): st.session_state.page = 'selection'; st.rerun()
 
-st.markdown("<br><br><p style='text-align: center; color: gray; font-size: 10px;'>© 2026 Designed by [펭귄주인장]</p>", unsafe_allow_html=True)
+# 💡 [신규 UI] 저작권 문구 및 블로그 하이퍼링크 추가
+st.markdown("""
+    <br><br><br>
+    <p style='text-align: center; color: gray; font-size: 13px;'>
+        © 2026 Designed by [펭귄주인장]. 무단 복제 및 상업적 배포 금지.<br>
+        🌐 <a href='https://blog.naver.com/jeaha_' target='_blank' style='color: #3498db; text-decoration: none; font-weight:bold;'>펭귄주인장 블로그 구경가기</a>
+    </p>
+""", unsafe_allow_html=True)
