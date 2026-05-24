@@ -52,8 +52,6 @@ def find_image_path(filename):
     if not filename or filename.lower() == 'nan': return None
     base_name = os.path.splitext(filename)[0]
     extensions = ['', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.PNG', '.JPG', '.JPEG']
-    
-    # 💡 [핵심] 소방설비기사실기사진 폴더 추가!
     search_folders = ["사진폴더", "실습형사진폴더", "소방설비기사필기사진", "소방설비기사실기사진"]
 
     for folder in search_folders:
@@ -74,11 +72,15 @@ def find_image_path(filename):
                     return os.path.join(root, f)
     return None
 
-def get_images_html(img_names_raw):
+# 💡 에러 메시지 없이 조용히 넘어가는 기능 추가 (텍스트 해설과 겹칠 때 대비)
+def get_images_html(img_names_raw, show_error=False):
     if pd.isna(img_names_raw): return ""
     img_names_raw = str(img_names_raw).strip()
     if not img_names_raw or img_names_raw.lower() == 'nan': return ""
     
+    # 엑셀 숫자 .0 꼬리표 제거
+    if re.match(r'^\d+\.0$', img_names_raw): img_names_raw = img_names_raw[:-2]
+
     img_html = ""
     img_names = [name.strip() for name in img_names_raw.replace(';', ',').split(',') if name.strip()]
     for img_name in img_names:
@@ -87,12 +89,12 @@ def get_images_html(img_names_raw):
             with open(img_path, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read()).decode()
             img_html += f'<div class="cbt-img-box"><img src="data:image/png;base64,{encoded_string}"></div>'
-        else:
+        elif show_error:
             img_html += f'<div style="color: red; text-align: center; margin-top: 10px; font-weight: bold;">🚨 이미지 없음: {img_name}</div>'
     return img_html
 
 # ==========================================
-# ⚙️ 데이터 및 조회수(IP 중복방지) 관리
+# ⚙️ 데이터 및 조회수 관리 로직
 # ==========================================
 def load_guestbook():
     if os.path.exists(GUESTBOOK_FILE):
@@ -249,7 +251,6 @@ keys_to_init = [
 for key in keys_to_init:
     if key not in st.session_state: st.session_state[key] = None
 
-# 임시 고정 IP 목록 (원하시면 나중에 삭제 가능)
 MY_IPS = ["192.168.1.240", "192.168.0.171"]
 
 if st.query_params.get("admin") == "vip" or client_ip in MY_IPS:
@@ -302,7 +303,6 @@ if st.session_state.page == 'selection':
     
     cert_type = st.radio("📚 자격증 선택", ["🚧 산업안전기사", "🔥 소방설비기사(전기)"], horizontal=True)
     
-    # 💡 [핵심] 소방설비기사 선택 시 필기/실기 선택 부활!
     if "소방설비기사" in cert_type:
         exam_type = st.radio("📝 시험 유형 선택", ["📖 필기 (객관식)", "✍️ 실기 (주관식/서술)"], horizontal=True)
         
@@ -315,11 +315,10 @@ if st.session_state.page == 'selection':
                 target_subject = st.selectbox("📖 과목 선택", ["전체 과목 (80문제)", "1과목: 소방원론", "2과목: 소방전기회로", "3과목: 소방관계법규", "4과목: 소방전기시설의 구조 및 원리"])
             target_file = FILE_SOBANG_PILGI
         else:
-            # 실기일 때는 과목분류/모드선택 없이 심플하게 문제풀이로 통일
             study_mode = "💡 문제풀이 모드"
             target_subject = "전체"
             target_file = FILE_SOBANG_SILGI
-            st.write("") # 간격 띄우기
+            st.write("")
     else:
         exam_type = st.radio("📝 시험 유형 선택", ["✍️ 필답형 (주관식/서술)", "💻 작업형 (동영상/도면)"], horizontal=True)
         target_file = FILE_PILDAP if "필답형" in exam_type else FILE_JAKUP
@@ -340,7 +339,6 @@ if st.session_state.page == 'selection':
         
         df['원본번호'] = range(1, len(df) + 1)
         
-        # 소방 필기일 때만 과목별 필터링 적용
         if "소방설비기사" in current_cert and "필기" in current_exam:
             if "1과목" in subject: df = df.iloc[0:20]
             elif "2과목" in subject: df = df.iloc[20:40]
@@ -426,10 +424,8 @@ elif st.session_state.page == 'quiz':
                 st.session_state.index = i; st.session_state.show_answer = False; st.session_state.clicked_opt = None; st.rerun()
                 
     subject_badge = ""
-    # 필기시험일 때만 과목 배지 생성
     if st.session_state.cert_type == "🔥 소방설비기사(전기)" and "필기" in st.session_state.exam_type:
         orig_q_num = int(row.get('원본번호', idx + 1))
-        
         if 1 <= orig_q_num <= 20: subj = "1과목: 소방원론"
         elif 21 <= orig_q_num <= 40: subj = "2과목: 소방전기회로"
         elif 41 <= orig_q_num <= 60: subj = "3과목: 소방관계법규"
@@ -438,6 +434,26 @@ elif st.session_state.page == 'quiz':
         
     st.markdown(f"<br>{subject_badge}<h3 style='margin-top:5px;'>{q_text}</h3>", unsafe_allow_html=True)
     
+    # [보기] 및 [화면설명] 완벽 줄바꿈 지원
+    bogi_col = next((c for c in ['참고', '보기', '[보기]'] if c in df.columns), None)
+    bogi_raw = str(row[bogi_col]).strip() if bogi_col and pd.notna(row.get(bogi_col)) else ""
+    if bogi_raw.lower() == 'nan': bogi_raw = ""
+    
+    desc_col = next((c for c in ['그림설명', '화면설명', '동영상설명'] if c in df.columns), None)
+    desc_text = str(row[desc_col]).strip() if desc_col and pd.notna(row.get(desc_col)) else ""
+    if desc_text.lower() == 'nan': desc_text = ""
+
+    if bogi_raw:
+        if '\n' not in bogi_raw and find_image_path(bogi_raw):
+            st.markdown(get_images_html(bogi_raw), unsafe_allow_html=True)
+        else:
+            bogi_html = bogi_raw.replace('\n', '<br>')
+            st.markdown(f'<div style="background-color: white; padding: 20px; border-radius: 8px; border: 2px solid #bdc3c7; color: #2c3e50; font-size: 15px; margin-bottom: 15px;"><strong>[보기]</strong><br><br>{bogi_html}</div>', unsafe_allow_html=True)
+
+    if desc_text:
+        desc_html = desc_text.replace('\n', '<br>')
+        st.markdown(f'<div style="background-color: #eaf2f8; padding: 15px; border-radius: 8px; border-left: 5px solid #3498db; margin-bottom: 15px; color: #2c3e50; font-size: 15px; line-height: 1.6;">🎬 <strong>[화면 설명]</strong><br>{desc_html}</div>', unsafe_allow_html=True)
+
     raw_opts = str(row.get('객관식보기', '')).strip()
     is_img_opts = False; opts_list = []
     if raw_opts and raw_opts.lower() != 'nan':
@@ -492,21 +508,53 @@ elif st.session_state.page == 'quiz':
         with c_next_btn:
             if st.button("다음 문제", type="primary", use_container_width=True): st.session_state.index += 1; st.rerun()
 
+    # 💡 [핵심] 해설 파트 줄바꿈 보장 & 이미지 파일명 중복 텍스트 출력 방지
     if st.session_state.show_answer:
         st.divider()
-        ans_text = ""
-        for c in ['정답', '답', '해설', '설명', '해답ㆍ해설', '해답·해설']:
+        ans_text_html = ""
+        ans_imgs_html = ""
+        seen_texts = set()
+        seen_imgs = set()
+
+        is_first_text = True
+        for c in ['정답', '답', '해설', '설명', '해설이미지', '해설사진', '해답ㆍ해설', '해답·해설']:
             if st.session_state.clicked_opt is not None and c in ['정답', '답']: continue
             if c in df.columns and pd.notna(row.get(c)):
                 val = str(row[c]).strip()
-                if val.lower() != 'nan' and val:
-                    if ans_text and c in ['해설', '설명', '해답ㆍ해설', '해답·해설']: ans_text += "<br><strong>[해설]</strong><br>"
-                    ans_text += f"{val}"
-        if ans_text: st.info(ans_text)
-        
-        ans_img_col = next((c for c in ['해설이미지', '해설사진', '해답ㆍ해설', '해답·해설'] if c in df.columns), None)
-        ans_imgs_html = get_images_html(row.get(ans_img_col)) if ans_img_col else ""
-        if ans_imgs_html: st.markdown(ans_imgs_html, unsafe_allow_html=True)
+                if val.lower() == 'nan' or not val: continue
+                
+                # float ".0" 이슈 수정
+                if re.match(r'^\d+\.0$', val): val = val[:-2]
+
+                parts = [p.strip() for p in val.replace(';', ',').split(',') if p.strip()]
+                all_found = True
+                found_paths = []
+                for p in parts:
+                    path = find_image_path(p)
+                    if path: found_paths.append(p)
+                    else: all_found = False
+                
+                if parts and all_found:
+                    # 100% 이미지 파일명일 때 (텍스트로 출력 방지)
+                    for p in found_paths:
+                        if p not in seen_imgs:
+                            ans_imgs_html += get_images_html(p, show_error=False)
+                            seen_imgs.add(p)
+                else:
+                    # 일반 텍스트 해설일 때 (줄바꿈 허용)
+                    if val not in seen_texts:
+                        val_html = val.replace('\n', '<br>')
+                        if not is_first_text and c in ['해설', '설명', '해답ㆍ해설', '해답·해설']:
+                            ans_text_html += "<br><br><strong>[해설]</strong><br>"
+                        ans_text_html += f"{val_html}"
+                        seen_texts.add(val)
+                        is_first_text = False
+                        
+        if ans_text_html:
+            st.markdown(f'<div style="background-color: #e8f4f8; padding: 15px; border-radius: 8px; color: #1e5266; margin-bottom: 15px; font-size: 15px; line-height: 1.6;">💡 <strong>정답 및 해설</strong><br><br>{ans_text_html}</div>', unsafe_allow_html=True)
+            
+        if ans_imgs_html:
+            st.markdown(ans_imgs_html, unsafe_allow_html=True)
         
         if st.session_state.clicked_opt is not None:
             if st.button("해설 확인 완료! 다음 문제로 ➔", type="primary", use_container_width=True): go_next(False)
@@ -600,23 +648,56 @@ elif st.session_state.page == 'result':
                     if '\n' not in raw_opts and find_image_path(raw_opts):
                         st.markdown(get_images_html(raw_opts), unsafe_allow_html=True)
                     else:
-                        st.markdown(f"<pre style='font-family: inherit; background: transparent; border: none; padding: 0; margin-bottom: 10px;'>{raw_opts}</pre>", unsafe_allow_html=True)
+                        raw_opts_html = raw_opts.replace('\n', '<br>')
+                        st.markdown(f'<div style="background-color: white; padding: 15px; border-radius: 8px; border: 1px solid #ccc; margin-bottom: 10px;">{raw_opts_html}</div>', unsafe_allow_html=True)
                 
                 st.markdown("---")
                 c1, c2 = st.columns(2)
                 c1.markdown(f"🙋‍♂️ **내 선택:** {user_pick}번" if user_pick != "미선택" else "🙋‍♂️ **내 선택:** 미선택")
                 c2.markdown(f"🎯 **실제 정답:** {actual_ans}번")
                 
-                ans_text = ""
-                for c in ['해설', '설명', '해답ㆍ해설', '해답·해설']:
+                # 결과창 상세 해설 로직 완벽 동기화
+                ans_text_html = ""
+                ans_imgs_html = ""
+                seen_texts = set()
+                seen_imgs = set()
+
+                is_first_text = True
+                for c in ['해설', '설명', '해설이미지', '해설사진', '해답ㆍ해설', '해답·해설']:
                     if c in st.session_state.df.columns and pd.notna(row.get(c)):
-                        ans_text += str(row[c]).strip() + "<br>"
-                ans_img_col = next((c for c in ['해설이미지', '해설사진', '해답ㆍ해설', '해답·해설'] if c in st.session_state.df.columns), None)
-                ans_imgs_html = get_images_html(row.get(ans_img_col)) if ans_img_col else ""
-                
-                if ans_text or ans_imgs_html:
+                        val = str(row[c]).strip()
+                        if val.lower() == 'nan' or not val: continue
+                        
+                        if re.match(r'^\d+\.0$', val): val = val[:-2]
+
+                        parts = [p.strip() for p in val.replace(';', ',').split(',') if p.strip()]
+                        all_found = True
+                        found_paths = []
+                        for p in parts:
+                            path = find_image_path(p)
+                            if path: found_paths.append(p)
+                            else: all_found = False
+                        
+                        if parts and all_found:
+                            for p in found_paths:
+                                if p not in seen_imgs:
+                                    ans_imgs_html += get_images_html(p, show_error=False)
+                                    seen_imgs.add(p)
+                        else:
+                            if val not in seen_texts:
+                                val_html = val.replace('\n', '<br>')
+                                if not is_first_text:
+                                    ans_text_html += "<br><br><strong>[해설]</strong><br>"
+                                ans_text_html += f"{val_html}"
+                                seen_texts.add(val)
+                                is_first_text = False
+                                
+                if ans_text_html or ans_imgs_html:
                     st.info("💡 **해설**")
-                    st.markdown(f"{ans_text}{ans_imgs_html}", unsafe_allow_html=True)
+                    if ans_text_html:
+                        st.markdown(f"{ans_text_html}", unsafe_allow_html=True)
+                    if ans_imgs_html:
+                        st.markdown(ans_imgs_html, unsafe_allow_html=True)
     
     st.write("---")
     if st.button("🏠 홈으로 돌아가기", use_container_width=True): st.session_state.page = 'selection'; st.rerun()
