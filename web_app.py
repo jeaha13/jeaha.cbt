@@ -52,7 +52,9 @@ def find_image_path(filename):
     if not filename or filename.lower() == 'nan': return None
     base_name = os.path.splitext(filename)[0]
     extensions = ['', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.PNG', '.JPG', '.JPEG']
-    search_folders = ["사진폴더", "실습형사진폴더", "소방설비기사필기사진"]
+    
+    # 💡 [핵심] 소방설비기사실기사진 폴더 추가!
+    search_folders = ["사진폴더", "실습형사진폴더", "소방설비기사필기사진", "소방설비기사실기사진"]
 
     for folder in search_folders:
         if not os.path.exists(folder): continue
@@ -131,7 +133,6 @@ def load_stats():
 
 def increment_visits(ip):
     stats = load_stats()
-    # 💡 오늘 처음 온 IP일 때만 조회수 +1 (새로고침 무한 방어!)
     if ip not in stats["today_ips"]:
         stats["today_ips"].append(ip)
         stats["total_visits"] += 1
@@ -243,13 +244,21 @@ keys_to_init = [
     'page', 'df', 'index', 'total_possible_score', 'user_answers',
     'show_answer', 'start_time', 'is_review_mode', 'is_bookmark_mode', 
     'is_mock_exam', 'has_visited', 'cert_type', 'exam_type',
-    'clicked_opt', 'study_mode', 'nickname'
+    'clicked_opt', 'study_mode', 'is_admin', 'nickname'
 ]
 for key in keys_to_init:
     if key not in st.session_state: st.session_state[key] = None
 
-if st.session_state.nickname is None:
-    st.session_state.nickname = client_ip
+# 임시 고정 IP 목록 (원하시면 나중에 삭제 가능)
+MY_IPS = ["192.168.1.240", "192.168.0.171"]
+
+if st.query_params.get("admin") == "vip" or client_ip in MY_IPS:
+    st.session_state.nickname = "펭귄주인장"
+    st.session_state.is_admin = True
+else:
+    if st.session_state.nickname is None or st.session_state.nickname == "펭귄주인장":
+        st.session_state.nickname = client_ip
+    st.session_state.is_admin = False
 
 if not isinstance(st.session_state.get('history'), dict):
     st.session_state.history = {}
@@ -261,7 +270,8 @@ if st.session_state.page is None or st.session_state.page == 'login':
 
 if st.session_state.has_visited is None: st.session_state.has_visited = False
 if not st.session_state.has_visited:
-    increment_visits(client_ip)
+    if not st.session_state.is_admin:
+        increment_visits(client_ip)
     st.session_state.has_visited = True
 
 # ==========================================
@@ -270,7 +280,6 @@ if not st.session_state.has_visited:
 if st.session_state.page == 'selection':
     st.markdown("<h1 style='text-align: center;'>🎓 자격증 문제풀이 CBT</h1>", unsafe_allow_html=True)
     
-    # 💡 [문구 업데이트] 더 깔끔하고 진정성 있는 배너
     st.markdown("""
     <div style="background-color: #f8f9fa; padding: 18px; border-radius: 12px; border-left: 6px solid #3498db; margin-bottom: 25px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
         <strong style="color: #2c3e50; font-size: 16px;">🎯 여러분의 합격을 진심으로 기원합니다!</strong><br>
@@ -280,9 +289,11 @@ if st.session_state.page == 'selection':
     """, unsafe_allow_html=True)
     
     stats = load_stats()
+    admin_tag = "👑 펭귄주인장 접속중" if st.session_state.is_admin else f"접속 기기 IP: {st.session_state.nickname}"
+    
     st.markdown(f"""
     <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom: 1px solid #eee; padding-bottom: 10px;'>
-        <div style='color:gray; font-size:13px;'>접속 기기 IP: {st.session_state.nickname}</div>
+        <div style='color:gray; font-size:13px;'>{admin_tag}</div>
         <div style='font-size:14px; font-weight:bold; color:#2c3e50;'>
             📈 Today <span style='color:#e74c3c;'>{stats['today_visits']}</span> / Total <span style='color:#3498db;'>{stats['total_visits']}</span>
         </div>
@@ -291,14 +302,24 @@ if st.session_state.page == 'selection':
     
     cert_type = st.radio("📚 자격증 선택", ["🚧 산업안전기사", "🔥 소방설비기사(전기)"], horizontal=True)
     
+    # 💡 [핵심] 소방설비기사 선택 시 필기/실기 선택 부활!
     if "소방설비기사" in cert_type:
-        st.markdown("---")
-        col_m1, col_m2 = st.columns(2)
-        with col_m1:
-            study_mode = st.radio("🛠️ 학습 모드 설정", ["💡 문제풀이 모드", "⏱️ 실제시험 모드"], help="문제풀이 모드는 정답을 바로 확인하고, 실제시험 모드는 제출 후에 확인합니다.")
-        with col_m2:
-            target_subject = st.selectbox("📖 과목 선택", ["전체 과목 (80문제)", "1과목: 소방원론", "2과목: 소방전기회로", "3과목: 소방관계법규", "4과목: 소방전기시설의 구조 및 원리"])
-        target_file = FILE_SOBANG_PILGI
+        exam_type = st.radio("📝 시험 유형 선택", ["📖 필기 (객관식)", "✍️ 실기 (주관식/서술)"], horizontal=True)
+        
+        if "필기" in exam_type:
+            st.markdown("---")
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                study_mode = st.radio("🛠️ 학습 모드 설정", ["💡 문제풀이 모드", "⏱️ 실제시험 모드"], help="문제풀이 모드는 정답을 바로 확인하고, 실제시험 모드는 제출 후에 확인합니다.")
+            with col_m2:
+                target_subject = st.selectbox("📖 과목 선택", ["전체 과목 (80문제)", "1과목: 소방원론", "2과목: 소방전기회로", "3과목: 소방관계법규", "4과목: 소방전기시설의 구조 및 원리"])
+            target_file = FILE_SOBANG_PILGI
+        else:
+            # 실기일 때는 과목분류/모드선택 없이 심플하게 문제풀이로 통일
+            study_mode = "💡 문제풀이 모드"
+            target_subject = "전체"
+            target_file = FILE_SOBANG_SILGI
+            st.write("") # 간격 띄우기
     else:
         exam_type = st.radio("📝 시험 유형 선택", ["✍️ 필답형 (주관식/서술)", "💻 작업형 (동영상/도면)"], horizontal=True)
         target_file = FILE_PILDAP if "필답형" in exam_type else FILE_JAKUP
@@ -319,7 +340,8 @@ if st.session_state.page == 'selection':
         
         df['원본번호'] = range(1, len(df) + 1)
         
-        if "소방설비기사" in current_cert:
+        # 소방 필기일 때만 과목별 필터링 적용
+        if "소방설비기사" in current_cert and "필기" in current_exam:
             if "1과목" in subject: df = df.iloc[0:20]
             elif "2과목" in subject: df = df.iloc[20:40]
             elif "3과목" in subject: df = df.iloc[40:60]
@@ -333,7 +355,7 @@ if st.session_state.page == 'selection':
     st.write("---")
     selected_sheet = st.selectbox("📚 회차(단원) 선택", sheet_names)
     if st.button("문제 풀기 🚀", use_container_width=True, type="primary"): 
-        start_new_quiz(selected_sheet, target_file, cert_type, "필기" if "소방" in cert_type else exam_type, study_mode, target_subject)
+        start_new_quiz(selected_sheet, target_file, cert_type, exam_type, study_mode, target_subject)
                 
     st.write("---")
     col1, col2 = st.columns(2)
@@ -364,8 +386,7 @@ if st.session_state.page == 'selection':
         new_msg = st.text_input("방명록 작성", placeholder="응원 한마디 부탁드려요!", label_visibility="collapsed")
         if st.button("✏️ 남기기", use_container_width=True):
             if new_msg.strip():
-                # 💡 모두 동등하게 익명 IP로 작성되도록 수정
-                writer_name = f"익명({st.session_state.nickname[:5]})"
+                writer_name = "👑 펭귄주인장" if st.session_state.is_admin else f"익명({st.session_state.nickname[:5]})"
                 entries.append({"name": writer_name, "msg": new_msg.strip(), "time": datetime.datetime.now().strftime("%m-%d %H:%M")})
                 save_guestbook(entries); st.rerun()
 
@@ -405,6 +426,7 @@ elif st.session_state.page == 'quiz':
                 st.session_state.index = i; st.session_state.show_answer = False; st.session_state.clicked_opt = None; st.rerun()
                 
     subject_badge = ""
+    # 필기시험일 때만 과목 배지 생성
     if st.session_state.cert_type == "🔥 소방설비기사(전기)" and "필기" in st.session_state.exam_type:
         orig_q_num = int(row.get('원본번호', idx + 1))
         
@@ -473,14 +495,19 @@ elif st.session_state.page == 'quiz':
     if st.session_state.show_answer:
         st.divider()
         ans_text = ""
-        for c in ['정답', '답', '해설', '설명']:
+        for c in ['정답', '답', '해설', '설명', '해답ㆍ해설', '해답·해설']:
             if st.session_state.clicked_opt is not None and c in ['정답', '답']: continue
             if c in df.columns and pd.notna(row.get(c)):
                 val = str(row[c]).strip()
                 if val.lower() != 'nan' and val:
-                    if ans_text and c in ['해설', '설명']: ans_text += "<br><strong>[해설]</strong><br>"
+                    if ans_text and c in ['해설', '설명', '해답ㆍ해설', '해답·해설']: ans_text += "<br><strong>[해설]</strong><br>"
                     ans_text += f"{val}"
         if ans_text: st.info(ans_text)
+        
+        ans_img_col = next((c for c in ['해설이미지', '해설사진', '해답ㆍ해설', '해답·해설'] if c in df.columns), None)
+        ans_imgs_html = get_images_html(row.get(ans_img_col)) if ans_img_col else ""
+        if ans_imgs_html: st.markdown(ans_imgs_html, unsafe_allow_html=True)
+        
         if st.session_state.clicked_opt is not None:
             if st.button("해설 확인 완료! 다음 문제로 ➔", type="primary", use_container_width=True): go_next(False)
         else:
@@ -518,7 +545,7 @@ elif st.session_state.page == 'result':
     mins, secs = divmod(int(time.time() - st.session_state.start_time), 60)
     st.subheader(f"⏱️ 소요 시간: {mins}분 {secs}초")
     
-    if st.session_state.cert_type == "🔥 소방설비기사(전기)":
+    if st.session_state.cert_type == "🔥 소방설비기사(전기)" and "필기" in st.session_state.exam_type:
         subj_names = ["1과목: 소방원론", "2과목: 소방전기회로", "3과목: 소방관계법규", "4과목: 소방전기시설의 구조 및 원리"]
         subj_correct = [0, 0, 0, 0]; subj_total = [0, 0, 0, 0]
         
@@ -581,10 +608,10 @@ elif st.session_state.page == 'result':
                 c2.markdown(f"🎯 **실제 정답:** {actual_ans}번")
                 
                 ans_text = ""
-                for c in ['해설', '설명']:
+                for c in ['해설', '설명', '해답ㆍ해설', '해답·해설']:
                     if c in st.session_state.df.columns and pd.notna(row.get(c)):
                         ans_text += str(row[c]).strip() + "<br>"
-                ans_img_col = next((c for c in ['해설이미지', '해설사진'] if c in st.session_state.df.columns), None)
+                ans_img_col = next((c for c in ['해설이미지', '해설사진', '해답ㆍ해설', '해답·해설'] if c in st.session_state.df.columns), None)
                 ans_imgs_html = get_images_html(row.get(ans_img_col)) if ans_img_col else ""
                 
                 if ans_text or ans_imgs_html:
